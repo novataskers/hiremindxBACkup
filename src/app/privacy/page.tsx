@@ -25,7 +25,7 @@ export default function PrivacyPolicyPage() {
                 {[
                   {
                     n: "1", title: "Introduction",
-                    body: "HireMindX (\"we\", \"our\", or \"us\") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Service."
+                    body: "HireMindX (\"we\", \"our\", or \"us\") is part of Atlas Infrastructure Group and owned by Atlas Infrastructure Group. The platform is powered by the AIG Engine and is currently running on AIG Engine 3. We are committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Service."
                   },
                   {
                     n: "3", title: "How We Use Your Information",

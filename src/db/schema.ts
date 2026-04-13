@@ -434,3 +434,15 @@ export const predictions = sqliteTable('predictions', {
   relatedTopics: text('related_topics', { mode: 'json' }), // Array of topic strings from user history
   createdAt: text('created_at').notNull(),
 });
+
+// Notifications
+export const notifications = sqliteTable('notifications', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(), // 'contract_offer', 'message', 'alert'
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  actionUrl: text('action_url'), // Link to act on this notification
+  isRead: integer('is_read', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+});

@@ -258,7 +258,7 @@ export default function AnalyzePage() {
     <div className="h-[100dvh] flex flex-col overflow-hidden bg-gradient-to-br from-background via-background to-blue-500/5">
       <header className="border-b border-border/50 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 flex-shrink-0">
         <div className="container mx-auto px-4 sm:px-6 h-16 flex items-center">
-          <Link href="/study/bulk-cv" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Link href="/bulk-cv" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <BookOpen className="w-6 h-6 text-blue-500" />
             <span className="text-xl font-bold tracking-tight">HIREMINDX STUDY</span>
           </Link>

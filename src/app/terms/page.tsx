@@ -25,7 +25,7 @@ export default function TermsOfServicePage() {
                 {[
                   {
                     n: "1", title: "Acceptance of Terms",
-                      body: 'By accessing or using HireMindX ("Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our Service.'
+                      body: 'By accessing or using HireMindX ("Service"), you agree to be bound by these Terms of Service. HireMindX is part of Atlas Infrastructure Group and owned by Atlas Infrastructure Group. The Service is powered by the AIG Engine and is currently running on AIG Engine 3. If you do not agree to these terms, please do not use our Service.'
                   },
                   {
                     n: "2", title: "Description of Service",

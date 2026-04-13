@@ -133,13 +133,29 @@ export async function POST(req: NextRequest) {
     const receiverIdStr = String(receiverId);
     const senderIdStr = String(session.user.id);
 
-    // Validate that the receiver exists in the user table
-    const [receiver] = await db.select({ id: user.id }).from(user).where(eq(user.id, receiverIdStr));
+    // Validate that the receiver exists in the user table, if not check if it's a valid mock profile and insert it.
+    let [receiver] = await db.select({ id: user.id }).from(user).where(eq(user.id, receiverIdStr));
     if (!receiver) {
-      return NextResponse.json(
-        { error: "This user is not available for messaging. They may be a demo profile." },
-        { status: 400 }
-      );
+      // It might be a demo profile from the frontend that hasn't been instantiated in the DB.
+      // We create a mock user row so the foreign key constraints pass and chats persist.
+      const mockEmail = `demo_${receiverIdStr}@hiremindx.demo`;
+      try {
+        await db.insert(user).values({
+          id: receiverIdStr,
+          name: "Demo Professional",
+          email: mockEmail,
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+        receiver = { id: receiverIdStr };
+      } catch (e) {
+         console.error("Failed to insert mock user:", e);
+         return NextResponse.json(
+          { error: "This user is not available for messaging." },
+          { status: 400 }
+        );
+      }
     }
 
     const ids = [senderIdStr, receiverIdStr].sort();
@@ -195,7 +211,35 @@ export async function POST(req: NextRequest) {
     console.error("Error sending community message:", error);
     const errMsg = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: "Internal Server Error", details: errMsg }, { status: 500 });
+  } finally {
+     if (receiverIdStr.includes("demo") || receiverIdStr.startsWith("free_") || receiverIdStr.length < 10) {
+        // Trigger bot reply async
+        const ids = [senderIdStr, receiverIdStr].sort();
+        const convKey = `${ids[0]}_${ids[1]}`;
+        triggerDemoBotReply(receiverIdStr, senderIdStr, convKey);
+     }
   }
+}
+
+// Background task function to trigger bot reply (simulated)
+async function triggerDemoBotReply(botId: string, userId: string, convKey: string) {
+  setTimeout(async () => {
+    try {
+      const db = (await import("@/db")).db;
+      const { communityDMs } = await import("@/db/schema");
+      await db.insert(communityDMs).values({
+        conversationKey: convKey,
+        senderId: botId,
+        receiverId: userId,
+        message: "Thanks for reaching out! I typically respond within 24 hours. (This is an automated demo reply)",
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+      console.log(`Demo bot reply sent for ${botId}`);
+    } catch(err) {
+      console.error("Demo bot failed to reply:", err);
+    }
+  }, 1500);
 }
 
 // Mark messages as read

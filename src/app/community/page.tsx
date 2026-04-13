@@ -42,7 +42,11 @@ import {
     Paperclip,
     ExternalLink,
     CheckCheck,
-    Target
+    Target,
+    Wrench,
+    HardHat,
+    Scale,
+    Bell
   } from "lucide-react";
 import type { GlobeHandle, GlobeMarker } from "@/components/InteractiveGlobe";
 
@@ -64,20 +68,26 @@ import { CommunityOnboardingModal } from "@/components/CommunityOnboardingModal"
 const CATEGORIES = [
   { id: "all", name: "All Categories", icon: LayoutGrid },
   { id: "tech", name: "Technology & Programming", icon: Code },
+  { id: "engineering", name: "Engineering & Architecture", icon: HardHat },
+  { id: "trades", name: "Trades & Local Services", icon: Wrench },
   { id: "design", name: "Design & Creative", icon: Palette },
   { id: "writing", name: "Writing & Translation", icon: Edit3 },
   { id: "marketing", name: "Digital Marketing", icon: Megaphone },
   { id: "video", name: "Video & Photo", icon: Video },
   { id: "business", name: "Business & Support", icon: BarChart3 },
+  { id: "legal", name: "Legal & General Consulting", icon: Scale },
 ];
 
 const OFFER_CATEGORIES = [
   { value: "tech", label: "Technology & Programming" },
+  { value: "engineering", label: "Engineering & Architecture" },
+  { value: "trades", label: "Trades & Local Services (Plumbing, Electrical, etc.)" },
   { value: "design", label: "Design & Creative" },
   { value: "writing", label: "Writing & Translation" },
   { value: "marketing", label: "Digital Marketing" },
   { value: "video", label: "Video & Photo" },
   { value: "business", label: "Business & Support" },
+  { value: "legal", label: "Legal & General Consulting" },
 ];
 
 const PROJECTS = [
@@ -159,6 +169,23 @@ export default function CommunityPage() {
        const [showContractModal, setShowContractModal] = useState(false);
        const [submittingContract, setSubmittingContract] = useState(false);
        const [contractForm, setContractForm] = useState({ title: "", description: "", amount: "", timeline: "", milestones: "" });
+
+       const [notifications, setNotifications] = useState<any[]>([]);
+       const [showNotifications, setShowNotifications] = useState(false);
+
+       useEffect(() => {
+         if (!hasProfile || !session?.user?.id) return;
+         const fetchNotifs = async () => {
+           try {
+             const res = await fetch("/api/community/notifications");
+             const data = await res.json();
+             if (data.notifications) setNotifications(data.notifications);
+           } catch(e) {}
+         };
+         fetchNotifs();
+         const interval = setInterval(fetchNotifs, 10000);
+         return () => clearInterval(interval);
+       }, [hasProfile, session?.user?.id]);
 
   // Globe state
   const globeRef = useRef<GlobeHandle | null>(null);
@@ -804,8 +831,26 @@ export default function CommunityPage() {
           }),
         });
         const data = await res.json().catch(() => null);
+        
+        // Let's also issue the notification if successful (or if it's a mocked demo profile)
         if (res.ok || (res.status === 400 && data?.error?.includes("demo profile"))) {
           toast.success("Contract offer sent!");
+          
+          try {
+             await fetch("/api/community/notifications", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                   userId: partnerId,
+                   type: "contract_offer",
+                   title: "New Contract Offer Received",
+                   message: `You have received a new contract offer: ${contractForm.title} for $${contractForm.amount}. Check your messages!`,
+                })
+             });
+          } catch(err) {
+             console.error("Failed to post notification:", err);
+          }
+
           setShowContractModal(false);
           setContractForm({ title: "", description: "", amount: "", timeline: "", milestones: "" });
           // Open chat automatically
@@ -961,6 +1006,40 @@ export default function CommunityPage() {
           <MessageCircle className="w-4 h-4 text-white/60" />
           {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-white text-black text-[9px] font-bold rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>}
         </button>
+
+        <div className="relative">
+          <button onClick={() => setShowNotifications(!showNotifications)} className="relative w-10 h-10 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] transition-all flex items-center justify-center">
+            <Bell className="w-4 h-4 text-white/60" />
+            {notifications.filter(n => !n.isRead).length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#f5c518] text-black text-[9px] font-bold rounded-full flex items-center justify-center">{notifications.filter(n => !n.isRead).length}</span>}
+          </button>
+          
+          <AnimatePresence>
+            {showNotifications && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 top-14 w-80 max-h-96 overflow-y-auto bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-2xl z-50 p-4">
+                <h3 className="font-bold text-sm text-white mb-4">Notifications</h3>
+                {notifications.length === 0 ? (
+                  <p className="text-xs text-white/40 text-center py-4">No new notifications</p>
+                ) : (
+                  <div className="space-y-3">
+                    {notifications.map((notif: any) => (
+                      <div key={notif.id} className={`p-3 rounded-xl text-left border ${notif.isRead ? 'bg-white/5 border-transparent' : 'bg-white/10 border-white/20'}`} onClick={async () => {
+                        if (!notif.isRead) {
+                          await fetch("/api/community/notifications", { method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ notificationId: notif.id }) });
+                          setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
+                        }
+                        if (notif.type === 'contract_offer') setShowMessages(true);
+                      }}>
+                        <p className="text-[13px] font-bold text-white mb-1">{notif.title}</p>
+                        <p className="text-xs text-white/70 line-clamp-2">{notif.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         <button onClick={() => router.push('/')} className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] transition-all flex items-center justify-center">
           <ArrowLeft className="w-4 h-4 text-white/60" />
         </button>

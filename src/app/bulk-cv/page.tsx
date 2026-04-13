@@ -264,15 +264,15 @@ export default function BulkCVPage() {
 
           {/* Page Header */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-            <button onClick={() => router.push("/dashboard")} className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-white/80 mb-4 transition-colors">
-              <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+            <button onClick={() => router.push("/")} className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-white/80 mb-4 transition-colors">
+              <ArrowLeft className="w-4 h-4" /> Back to Home
             </button>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h1 className="text-4xl font-black tracking-tighter text-white">Bulk CV Analysis</h1>
-                <p className="mt-1 text-white/40 font-light">Upload CVs and let AI rank your candidates automatically.</p>
+                <h1 className="text-3xl sm:text-4xl font-black tracking-tighter text-white">Bulk CV Analysis</h1>
+                <p className="mt-1 text-white/40 font-light text-sm sm:text-base">Upload CVs and let AI rank your candidates automatically.</p>
               </div>
-              <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:bg-white/90 transition-all">
+              <button onClick={() => setShowCreateModal(true)} className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:bg-white/90 transition-all w-full sm:w-auto shrink-0">
                 <Plus className="w-4 h-4" /> New Position
               </button>
             </div>
@@ -321,12 +321,16 @@ export default function BulkCVPage() {
               {selectedPosition ? (
                 <div className="p-6">
                   <div className="mb-6">
-                    <div className="flex items-start justify-between mb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4 mb-4">
                       <div>
-                        <h2 className="text-2xl font-black tracking-tighter text-white">{selectedPosition.title}</h2>
-                        <p className="text-white/40 text-sm">{selectedPosition.department} · {selectedPosition.organization}</p>
+                        <h2 className="text-xl sm:text-2xl font-black tracking-tighter text-white">
+                          {selectedPosition.title}
+                        </h2>
+                        <p className="text-white/40 text-xs sm:text-sm">
+                          {selectedPosition.department} · {selectedPosition.organization}
+                        </p>
                       </div>
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${selectedPosition.status === "completed" ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" : "border-white/10 text-white/40 bg-white/5"}`}>
+                      <span className={`self-start px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-semibold border ${selectedPosition.status === "completed" ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" : "border-white/10 text-white/40 bg-white/5"}`}>
                         {selectedPosition.status}
                       </span>
                     </div>
@@ -364,25 +368,27 @@ export default function BulkCVPage() {
 
                         return (
                         <div key={cvId} className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
-                          <button onClick={() => setExpandedCandidate(expandedCandidate === cvId ? null : cvId)} className="w-full p-4 flex items-center justify-between text-left">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${c.rank === 1 ? "bg-amber-400/20 text-amber-400 border border-amber-400/30" : c.rank === 2 ? "bg-white/10 text-white/70 border border-white/20" : c.rank === 3 ? "bg-amber-700/20 text-amber-600 border border-amber-700/30" : "bg-white/[0.05] text-white/30 border border-white/[0.08]"}`}>
+                          <button onClick={() => setExpandedCandidate(expandedCandidate === cvId ? null : cvId)} className="w-full p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
+                            <div className="flex items-center gap-3 w-full sm:w-auto">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${c.rank === 1 ? "bg-amber-400/20 text-amber-400 border border-amber-400/30" : c.rank === 2 ? "bg-white/10 text-white/70 border border-white/20" : c.rank === 3 ? "bg-amber-700/20 text-amber-600 border border-amber-700/30" : "bg-white/[0.05] text-white/30 border border-white/[0.08]"}`}>
                                 {c.rank <= 3 ? <Trophy className="w-4 h-4" /> : c.rank}
                               </div>
-                              <div>
-                                <h4 className="font-semibold text-white text-sm">{c.cv.candidateName || c.cv.fileName}</h4>
-                                {c.cv.candidateName && <p className="text-xs text-white/30">{c.cv.fileName}</p>}
+                              <div className="min-w-0">
+                                <h4 className="font-semibold text-white text-sm truncate">{c.cv.candidateName || c.cv.fileName}</h4>
+                                {c.cv.candidateName && <p className="text-xs text-white/30 truncate">{c.cv.fileName}</p>}
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              {c.analysis ? (
-                                <>
-                                  <span className={`text-xs font-medium ${getRec(c.analysis.recommendation).color}`}>{getRec(c.analysis.recommendation).label}</span>
-                                  <span className={`text-xl font-black ${scoreColor(c.analysis.overallScore)}`}>{c.analysis.overallScore}</span>
-                                </>
-                              ) : (
-                                <span className="text-xs text-white/30">{c.cv.status === "pending" ? "Pending" : "Analyzing..."}</span>
-                              )}
+                            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 border-white/10 pt-3 sm:pt-0">
+                              <div className="flex items-center gap-3">
+                                {c.analysis ? (
+                                  <>
+                                    <span className={`text-[11px] sm:text-xs font-medium ${getRec(c.analysis.recommendation).color}`}>{getRec(c.analysis.recommendation).label}</span>
+                                    <span className={`text-lg sm:text-xl font-black ${scoreColor(c.analysis.overallScore)}`}>{c.analysis.overallScore}</span>
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-white/30">{c.cv.status === "pending" ? "Pending" : "Analyzing..."}</span>
+                                )}
+                              </div>
                               {expandedCandidate === cvId ? <ChevronUp className="w-4 h-4 text-white/30" /> : <ChevronDown className="w-4 h-4 text-white/30" />}
                             </div>
                           </button>
@@ -396,16 +402,16 @@ export default function BulkCVPage() {
                                       {c.cv.candidatePhone && <a href={`tel:${c.cv.candidatePhone}`} className="flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300"><Phone className="w-3.5 h-3.5" />{c.cv.candidatePhone}</a>}
                                     </div>
                                   )}
-                                  <div className="grid grid-cols-3 gap-3">
+                                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
                                     {[["Skills", c.analysis.skillsMatch], ["Experience", c.analysis.experienceMatch], ["Education", c.analysis.educationMatch]].map(([label, val]) => (
                                       <div key={label as string} className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
                                         <p className="text-[11px] text-white/30 mb-1">{label}</p>
-                                        <p className={`text-lg font-black ${scoreColor(val as number)}`}>{val}%</p>
+                                        <p className={`text-base sm:text-lg font-black ${scoreColor(val as number)}`}>{val}%</p>
                                       </div>
                                     ))}
                                   </div>
                                   <p className="text-xs text-white/50 leading-relaxed">{c.analysis.summary}</p>
-                                  <div className="grid grid-cols-2 gap-3">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                                     {c.analysis.strengths.length > 0 && (
                                       <div>
                                         <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-2">Strengths</p>

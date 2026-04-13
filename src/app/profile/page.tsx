@@ -283,10 +283,13 @@ export default function ProfilePage() {
     reader.onloadend = async () => {
       const base64 = reader.result as string;
       try {
-        const res = await fetch("/api/user/update-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageUrl: base64 }) });
-        const data = await res.json();
-        if (res.ok) { setProfileImage(base64); toast.success("Profile picture updated!"); }
-        else { toast.error(data.error || "Failed to update picture"); }
+        const { data, error } = await authClient.updateUser({ image: base64 });
+        if (error) { toast.error(error.message || "Failed to update picture"); }
+        else { 
+            setProfileImage(base64); 
+            toast.success("Profile picture updated!"); 
+            setTimeout(() => window.location.reload(), 800);
+        }
       } catch { toast.error("Failed to update picture"); }
       finally { setUploadingImage(false); if (profilePicInputRef.current) profilePicInputRef.current.value = ""; }
     };

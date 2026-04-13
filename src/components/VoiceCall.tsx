@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Phone, PhoneOff, Mic, MicOff, User, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import Peer, { MediaConnection } from "peerjs";
+import Peer from "peerjs";
 import { toast } from "sonner";
 
 interface VoiceCallProps {
@@ -39,7 +39,7 @@ export function VoiceCall({
   
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-  const callRef = useRef<MediaConnection | null>(null);
+  const callRef = useRef<any | null>(null);
   const peerInstanceRef = useRef<Peer | null>(null);
 
   useEffect(() => {
@@ -165,7 +165,7 @@ export function VoiceCall({
     }
   };
 
-  const handleCall = (call: MediaConnection) => {
+  const handleCall = (call: any) => {
     call.on('stream', (remoteMediaStream) => {
       console.log('Received remote stream');
       setRemoteStream(remoteMediaStream);

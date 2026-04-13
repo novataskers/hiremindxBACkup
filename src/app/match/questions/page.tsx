@@ -186,7 +186,7 @@ function QuestionMakerContent() {
         <Header />
         <main className="max-w-3xl mx-auto px-5 pt-32 pb-20">
           {/* Back */}
-          <button onClick={() => router.push("/study/bulk-cv")} className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-white/80 mb-8 transition-colors">
+          <button onClick={() => router.push("/bulk-cv")} className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-white/80 mb-8 transition-colors">
             <ArrowLeft className="w-4 h-4" /> Back to Match
           </button>
 

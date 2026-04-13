@@ -20,7 +20,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const navItems = [
   { icon: Search,        label: "Assist",     href: "/assist",    width: 280 },
-  { icon: Briefcase,     label: "Match",      href: "/study/bulk-cv",     width: 360 },
+  { icon: Briefcase,     label: "Match",      href: "/match",     width: 360 },
   { icon: Users,         label: "Community",  href: "/community", width: 440 },
 ];
 

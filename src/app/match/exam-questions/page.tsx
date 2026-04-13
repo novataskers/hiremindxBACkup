@@ -242,7 +242,7 @@ function ExamQuestionsContent() {
       );
       setCurrentStep("subject");
     }
-  }, [mounted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mounted]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -904,7 +904,7 @@ function ExamQuestionsContent() {
           <div className="flex-1 flex flex-col min-w-0">
             {/* Header */}
             <header className={`h-12 flex items-center px-4 gap-3 flex-shrink-0 border-b ${isDark ? 'bg-white/5 border-white/5 backdrop-blur-md' : 'bg-white/40 border-black/5 backdrop-blur-md'}`}>
-              <Link href="/study/bulk-cv" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <Link href="/bulk-cv" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                 <GraduationCap className="w-5 h-5 text-primary" />
                 <span className="font-semibold">Exam Question Generator</span>
               </Link>
