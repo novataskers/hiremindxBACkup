@@ -386,6 +386,7 @@ export const communityDMs = sqliteTable('community_dms', {
   senderId: text('sender_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   receiverId: text('receiver_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   message: text('message').notNull(),
+  attachments: text('attachments', { mode: 'json' }), // Array of attachment objects { name, url, type }
   projectId: integer('project_id'), // optional link to a client project
   proposalId: integer('proposal_id'), // optional link to a proposal
   isRead: integer('is_read', { mode: 'boolean' }).notNull().default(false),

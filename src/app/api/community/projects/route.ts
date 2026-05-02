@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { clientProjects, communityProfiles } from "@/db/schema";
+import { clientProjects, communityProfiles, user } from "@/db/schema";
 import { eq, and, desc, like, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -43,18 +43,60 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(clientProjects.createdAt))
       .all();
 
-    // Attach profile info
+    // Attach profile info and user image
     const projectsWithProfiles = await Promise.all(
       projects.map(async (project) => {
         const profile = await db
-          .select({ displayName: communityProfiles.displayName, headline: communityProfiles.headline })
+          .select({ displayName: communityProfiles.displayName, headline: communityProfiles.headline, location: communityProfiles.location })
           .from(communityProfiles)
           .where(eq(communityProfiles.userId, project.userId))
           .get();
+        
+        const userInfo = await db
+          .select({ image: user.image, name: user.name })
+          .from(user)
+          .where(eq(user.id, project.userId))
+          .get();
+        
+        // Parse skills and extract location if stored there
+        let skills: string[] = [];
+        let location: string | null = null;
+        
+        try {
+          if (project.skills) {
+            const parsed = typeof project.skills === "string" ? JSON.parse(project.skills) : project.skills;
+            if (Array.isArray(parsed)) {
+              // Location is often stored as second item when AI creates job
+              skills = parsed.filter((s: string) => 
+                !['tech', 'design', 'writing', 'marketing', 'video', 'trades', 'business', 'legal', 'all'].includes(s.toLowerCase())
+              );
+              const possibleLocation = parsed.find((s: string) => 
+                s && s.length > 2 && !['tech', 'design', 'writing', 'marketing', 'video', 'trades', 'business', 'legal'].includes(s.toLowerCase())
+              );
+              if (possibleLocation && possibleLocation.length < 50) {
+                location = possibleLocation;
+              }
+            }
+          }
+        } catch {
+          skills = [];
+        }
+        
+        // Also try to extract location from description
+        if (!location && project.description) {
+          const locMatch = project.description.match(/\*\*Location:\*\*\s*(.+)/);
+          if (locMatch) {
+            location = locMatch[1].trim();
+          }
+        }
+        
         return {
           ...project,
-          skills: typeof project.skills === "string" ? JSON.parse(project.skills) : project.skills,
+          skills,
+          location: location || profile?.location || null,
           profile,
+          authorName: profile?.displayName || userInfo?.name || "Client",
+          clientImage: userInfo?.image || null,
         };
       })
     );
@@ -79,6 +121,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const now = new Date().toISOString();
 
+    // Build skills array including location if provided
+    const skillsArray = body.skills || [];
+    if (body.location && !skillsArray.includes(body.location)) {
+      skillsArray.push(body.location);
+    }
+    
     const result = await db
       .insert(clientProjects)
       .values({
@@ -88,7 +136,7 @@ export async function POST(request: NextRequest) {
         category: body.category,
         budget: body.budget,
         deadline: body.deadline || null,
-        skills: body.skills ? JSON.stringify(body.skills) : null,
+        skills: skillsArray.length > 0 ? JSON.stringify(skillsArray) : null,
         status: "open",
         proposals: 0,
         createdAt: now,

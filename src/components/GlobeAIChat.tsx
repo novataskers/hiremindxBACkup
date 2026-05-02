@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, MapPin, Sparkles } from "lucide-react";
 import { GlobeHandle, GlobeMarker } from "./InteractiveGlobe";
+import { toast } from "sonner";
 
 interface Worker {
   id: string;
@@ -25,6 +26,15 @@ interface ChatMessage {
   workers?: Worker[];
 }
 
+interface JobData {
+  description: string;
+  category: string;
+  location: string;
+  budget: string;
+  requirements: string;
+  userLocation: { lat: number; lng: number } | null;
+}
+
 interface Props {
   globeRef: React.RefObject<GlobeHandle | null>;
   onWorkersFound?: (workers: Worker[]) => void;
@@ -33,20 +43,16 @@ interface Props {
   className?: string;
 }
 
-const categoryMap: Record<string, string> = {
-  electrician: "tech", plumber: "business", carpenter: "business",
-  designer: "design", developer: "tech", programmer: "tech",
-  coder: "tech", writer: "writing", editor: "writing",
-  marketer: "marketing", videographer: "video", photographer: "video",
-  accountant: "business", lawyer: "business", cleaner: "business",
-  painter: "business", mechanic: "business", welder: "business",
-  tutor: "writing", teacher: "writing", translator: "writing",
-  "graphic designer": "design", "web developer": "tech", "app developer": "tech",
-  "social media": "marketing", "content creator": "marketing",
-  "video editor": "video", "data analyst": "tech",
-  "ui designer": "design", "ux designer": "design", "frontend": "tech",
-  "backend": "tech", "fullstack": "tech", "mobile": "tech",
-};
+const CATEGORIES = [
+  { id: "tech", name: "Technology & Programming", keywords: ["developer", "programmer", "coder", "web", "app", "software", "engineer", "data", "backend", "frontend", "fullstack", "mobile", "react", "node", "python", "java", "javascript", "typescript", "database", "api", "cloud", "devops"] },
+  { id: "design", name: "Design & Creative", keywords: ["designer", "graphic", "ui", "ux", "illustrator", "logo", "branding", "web design", "creative", "artist", "photoshop", "figma", "adobe"] },
+  { id: "writing", name: "Writing & Translation", keywords: ["writer", "content", "copywriter", "blog", "article", "translator", "editor", "proofreader", "seo writing", "technical writer"] },
+  { id: "marketing", name: "Digital Marketing", keywords: ["marketing", "seo", "social media", "ads", "facebook", "google ads", "email marketing", "growth", "digital marketer", "content marketing"] },
+  { id: "video", name: "Video & Photo", keywords: ["video", "photo", "photographer", "videographer", "video editor", "motion", "animation", "filmmaker", "youtube", "reels", "tiktok"] },
+  { id: "trades", name: "Trades & Local Services", keywords: ["plumber", "electrician", "carpenter", "painter", "welder", "mechanic", "cleaner", "locksmith", "hvac", "roofer", "handyman", "repair", "installation", "construction", "maintenance"] },
+  { id: "business", name: "Business & Support", keywords: ["accountant", "bookkeeper", "virtual assistant", "consultant", "business", "strategy", "admin", "data entry", "research"] },
+  { id: "legal", name: "Legal & Consulting", keywords: ["lawyer", "attorney", "legal", "contract", "paralegal", "consultant", "advisor"] },
+];
 
 const CITY_COORDS: Record<string, [number, number]> = {
   "new york": [40.71, -74.01], "london": [51.51, -0.13], "paris": [48.85, 2.35],
@@ -67,23 +73,165 @@ const CITY_COORDS: Record<string, [number, number]> = {
 function geocodeCity(city: string): [number, number] | null {
   const lower = city.toLowerCase().trim();
   for (const [name, coords] of Object.entries(CITY_COORDS)) {
-    if (lower.includes(name) || name.includes(lower)) return coords;
+    if (lower.includes(name) || name.includes(lower)) {
+      return coords;
+    }
+  }
+  const words = lower.split(',').map(w => w.trim());
+  for (const word of words) {
+    for (const [name, coords] of Object.entries(CITY_COORDS)) {
+      if (word.includes(name) || name.includes(word)) {
+        return coords;
+      }
+    }
   }
   return null;
 }
 
-function parseQuery(text: string): { category: string; location: string | null } {
-  const lower = text.toLowerCase();
-  let category = "all";
-  for (const [keyword, cat] of Object.entries(categoryMap)) {
-    if (lower.includes(keyword)) { category = cat; break; }
+async function geocodingLocationAsync(location: string): Promise<[number, number] | null> {
+  try {
+    const syncResult = geocodeCity(location);
+    if (syncResult) return syncResult;
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=1&addressdetails=0`,
+      { headers: { "Accept-Language": "en" } }
+    );
+    const data = await res.json();
+    if (data && data.length > 0) {
+      return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+    }
+  } catch (err) {
+    console.error("Geocoding error:", err);
   }
-  const locMatch = lower.match(/(?:in|near|from|at|around|by)\s+([a-z\s]{2,30})(?:\s|$|,|\.)/);
-  const location = locMatch ? locMatch[1].trim() : null;
-  return { category, location };
+  return null;
 }
 
-// Dummy worker pool for testing
+// Smart budget extraction - handles "100", "$100", "100 dollars", "100 USD", "around 100", "up to 100", etc.
+function extractBudget(text: string): string | null {
+  const patterns = [
+    // "$100", "$1,000", "$1000-2000", "$1000 to $2000"
+    /\$([\d,]+(?:\s*-\s*[\d,]+)?)/i,
+    // "100 dollars", "100 bucks", "around 100 dollars", "up to 100 dollars"
+    /(?:around|about|up to|at least|starting at|from)?\s*\$?([\d,]+)\s*(?:dollars?|bucks?|usd?)/i,
+    // "budget is 100", "budget: 100", "budget of $100"
+    /budget(?:\s*(?:is|:|of))?\s*\$?([\d,]+)/i,
+    // "100-200", "100 to 200", "between 100 and 200"
+    /(?:between\s*)?([\d,]+)\s*(?:to|and|-)\s*([\d,]+)/i,
+    // Standalone number that looks like a budget (after context words)
+    /(?:price|cost|pay|fee|rate)(?:\s+(?:is|of|:))?\s*\$?([\d,]+)/i,
+    // "negotiable", "flexible", "discuss"
+    /(negotiable|flexible|discuss|open to offers|best offer)/i,
+  ];
+  
+  const lower = text.toLowerCase();
+  
+  // Check for negotiable first
+  if (/(negotiable|flexible|discuss|open to offers|best offer|not sure)/i.test(lower)) {
+    return "Negotiable";
+  }
+  
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      if (match[1] && match[2]) {
+        // Range like "100-200"
+        return `$${match[1].replace(/,/g, '')} - $${match[2].replace(/,/g, '')}`;
+      }
+      if (match[1]) {
+        const num = match[1].replace(/,/g, '');
+        // Validate it's a reasonable budget number (not a year, zip code, etc)
+        const n = parseInt(num);
+        if (n >= 5 && n <= 1000000) {
+          return `$${num}`;
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Smart location extraction - handles "beside me", "near me", "in [city]", "close to me"
+function extractLocation(text: string, userLocation: { lat: number; lng: number } | null): string | null {
+  const lower = text.toLowerCase();
+  
+  // Check for "me" references
+  const mePatterns = [
+    /\b(beside|near|close to|next to|by|around)\s+(?:to\s+)?me\b/i,
+    /\bmy\s+(?:location|area|place|city|town)\b/i,
+    /\bwhere\s+i\s+(?:am|live|work)\b/i,
+    /\bmy\s+(?:current\s+)?location\b/i,
+    /\bhere\b/i,
+  ];
+  
+  for (const pattern of mePatterns) {
+    if (pattern.test(lower)) {
+      return userLocation ? "My Location" : null; // Will be resolved to actual city later
+    }
+  }
+  
+  // Extract explicit location mentions
+  const locationPatterns = [
+    // "in London", "at New York", "from Paris"
+    /(?:in|at|from|near|around|located\s+in|based\s+in)\s+([A-Z][a-zA-Z\s]+(?:,\s*[A-Z][a-zA-Z\s]+)?)/,
+    // Location at end of sentence: "...in London."
+    /(?:in|at|from|near)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)(?:\.|\s*$|\s*,)/,
+  ];
+  
+  for (const pattern of locationPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      const loc = match[1].trim();
+      // Filter out common false positives
+      const falsePositives = ["the", "a", "an", "my", "this", "that", "your", "our", "their"];
+      if (!falsePositives.includes(loc.toLowerCase()) && loc.length > 2) {
+        return loc;
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Auto-detect category from job description
+function detectCategory(text: string): string | null {
+  const lower = text.toLowerCase();
+  
+  for (const cat of CATEGORIES) {
+    for (const keyword of cat.keywords) {
+      if (lower.includes(keyword.toLowerCase())) {
+        return cat.id;
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Generate a professional job title from description
+function generateJobTitle(description: string, category: string): string {
+  const catInfo = CATEGORIES.find(c => c.id === category);
+  const catName = catInfo ? catInfo.name.split(' & ')[0] : category;
+  
+  // Try to extract specific role from description
+  const rolePatterns = [
+    /(?:need|looking for|want|seeking)\s+(?:an?|the)?\s*([a-z\s]+?)(?:\s+(?:to|for|who|that)|\s*[,.]|$)/i,
+    /(?:hire|get|find)\s+(?:an?)?\s*([a-z\s]+?)(?:\s+(?:to|for)|\s*[,.]|$)/i,
+  ];
+  
+  for (const pattern of rolePatterns) {
+    const match = description.match(pattern);
+    if (match && match[1]) {
+      const role = match[1].trim();
+      if (role.length > 3 && role.length < 40) {
+        return `${role.charAt(0).toUpperCase() + role.slice(1)} Needed`;
+      }
+    }
+  }
+  
+  return `${catName} Services Needed`;
+}
+
 const DUMMY_WORKERS: Worker[] = [
   { id: "d1", name: "Alex Chen", headline: "Senior Full-Stack Developer", category: "tech", location: "San Francisco", lat: 37.77, lng: -122.42, skills: ["React", "Node.js", "TypeScript"], rating: 4.9 },
   { id: "d2", name: "Maria Garcia", headline: "UI/UX Designer", category: "design", location: "Madrid", lat: 40.42, lng: -3.70, skills: ["Figma", "CSS", "Prototyping"], rating: 4.8 },
@@ -103,17 +251,122 @@ export default function GlobeAIChat({ globeRef, onWorkersFound, onMarkerAdd, onM
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      text: "Hi! I can find skilled workers anywhere on the globe. Try: \"find me a web developer near London\" or \"I need a designer in Tokyo\".",
+      text: "Hi! I'm your AI job assistant. Tell me what kind of work you need done, and I'll help you create a job post.\n\nFor example: \"I need a plumber to fix a leaky faucet near me\" or \"Looking for a web developer to build an e-commerce site, budget $2000\"",
     },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [jobData, setJobData] = useState<JobData>({
+    description: "",
+    category: "",
+    location: "",
+    budget: "",
+    requirements: "",
+    userLocation: null,
+  });
+  const [conversationState, setConversationState] = useState<"collecting" | "asking_budget" | "asking_location" | "asking_category" | "confirming" | "posted">("collecting");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Get user's location on mount
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setJobData(prev => ({
+            ...prev,
+            userLocation: { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          }));
+        },
+        () => {} // Silently ignore
+      );
+    }
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const handleSendMessage = async (text: string) => {
+    try {
+      // Prepare conversation history for the API
+      const history = messages.map(m => ({
+        role: m.role,
+        content: m.text
+      }));
+
+      const res = await fetch("/api/community/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          jobData: jobData,
+          conversationHistory: history
+        })
+      });
+
+      if (!res.ok) throw new Error("Failed to get response from AI");
+
+      const result = await res.json();
+      
+      if (result.error) throw new Error(result.error);
+
+      // Check for confirmation to post (if the AI thinks it's time)
+      const lowercaseMsg = result.message.toLowerCase();
+      const isConfirmed = /\b(yes|post it|go ahead|confirm)\b/i.test(text) && conversationState === "confirming";
+
+      if (isConfirmed || result.nextState === "posted") {
+        // Create the job post
+        const title = generateJobTitle(result.jobData.description, result.jobData.category);
+        const budgetText = result.jobData.budget || "Negotiable";
+        
+        let fullDescription = result.jobData.description;
+        fullDescription += `\n\n**Posted via AI Assistant**`;
+        
+        const createRes = await fetch("/api/community/projects", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: title,
+            description: fullDescription,
+            category: result.jobData.category,
+            budget: budgetText,
+            location: result.jobData.location,
+            skills: [result.jobData.category, result.jobData.location].filter(Boolean),
+          })
+        });
+        
+        if (createRes.ok) {
+          setConversationState("posted");
+          setJobData(result.jobData);
+          setMessages(prev => [...prev, { 
+            role: "assistant", 
+            text: `✅ **Job posted successfully!**\n\nYour job "${title}" has been posted.\n\nWould you like to post another? Just start describing it!`
+          }]);
+          toast.success("Job posted successfully!");
+          return;
+        }
+      }
+
+      // Update state with new job data from AI
+      setJobData(result.jobData);
+      setConversationState(result.nextState);
+      
+      // Add AI response to chat
+      setMessages(prev => [...prev, { 
+        role: "assistant", 
+        text: result.message 
+      }]);
+
+    } catch (err) {
+      console.error("AI Chat Error:", err);
+      setMessages(prev => [...prev, { 
+        role: "assistant", 
+        text: "I'm having a little trouble right now. Could you please try again?" 
+      }]);
+    }
+  };
 
   const handleSend = async () => {
     const text = input.trim();
@@ -123,92 +376,10 @@ export default function GlobeAIChat({ globeRef, onWorkersFound, onMarkerAdd, onM
     setLoading(true);
 
     try {
-      const { category, location } = parseQuery(text);
-
-      let targetCoords: [number, number] | null = null;
-      if (location) {
-        targetCoords = geocodeCity(location);
-        if (targetCoords) {
-          globeRef.current?.flyTo(targetCoords[0], targetCoords[1], 2.0);
-        }
-      }
-
-      // Fetch real workers first
-      let allWorkers: any[] = [];
-      try {
-        const res = await fetch("/api/community/freelancers");
-        const data = await res.json();
-        allWorkers = data.freelancers || [];
-      } catch {}
-
-      // Merge with dummy workers so there's always data
-      const mergedPool = [...DUMMY_WORKERS, ...allWorkers.map((w: any) => ({
-        id: w.id?.toString() || String(Math.random()),
-        name: w.displayName || w.name || "Worker",
-        headline: w.headline || "",
-        category: w.category || "all",
-        location: w.location || "Global",
-        lat: w.lat || 0,
-        lng: w.lng || 0,
-        skills: w.skills || [],
-        contact: w.contactEmail || null,
-        image: w.userImage || null,
-        userId: w.userId,
-      }))];
-
-      // Filter by category
-      let filtered = category === "all"
-        ? mergedPool
-        : mergedPool.filter((w) =>
-            w.category === category ||
-            w.skills?.some((sk: string) => sk.toLowerCase().includes(category)) ||
-            w.headline?.toLowerCase().includes(category)
-          );
-
-      // If location specified, prefer workers near that location
-      if (targetCoords && filtered.length > 0) {
-        filtered = filtered.sort((a, b) => {
-          const da = Math.abs(a.lat - targetCoords![0]) + Math.abs(a.lng - targetCoords![1]);
-          const db = Math.abs(b.lat - targetCoords![0]) + Math.abs(b.lng - targetCoords![1]);
-          return da - db;
-        });
-      }
-
-      const workers = filtered.slice(0, 6).map((w) => {
-        // Assign coords
-        const locCoords = w.location ? geocodeCity(w.location) : null;
-        const base: [number, number] = targetCoords || [20, 10];
-        const lat = (locCoords ? locCoords[0] : (w.lat || base[0] + (Math.random() - 0.5) * 20));
-        const lng = (locCoords ? locCoords[1] : (w.lng || base[1] + (Math.random() - 0.5) * 40));
-        return { ...w, lat, lng };
-      });
-
-      // Place markers (golden)
-      onMarkersClear?.();
-      workers.forEach((w) => {
-        onMarkerAdd?.({
-          id: w.id,
-          lat: w.lat,
-          lng: w.lng,
-          label: w.name,
-          type: w.category,
-          color: "#f5c518",
-        });
-      });
-
-      onWorkersFound?.(workers);
-
-      let reply = "";
-      if (workers.length === 0) {
-        reply = `I couldn't find ${category === "all" ? "workers" : category + " workers"}${location ? ` in ${location}` : ""}. Try a different search or category.`;
-      } else {
-        reply = `Found ${workers.length} ${category === "all" ? "professional" : category}${workers.length !== 1 ? "s" : ""}${location ? ` near ${location}` : ""}! Marked on the globe in gold.`;
-        if (targetCoords) reply += ` Flying to ${location}...`;
-      }
-
-      setMessages((prev) => [...prev, { role: "assistant", text: reply, workers }]);
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", text: "Something went wrong. Please try again." }]);
+      await handleSendMessage(text);
+    } catch (err) {
+      console.error("Error in handleSend:", err);
+      setMessages((prev) => [...prev, { role: "assistant", text: "I'm having trouble understanding. Could you rephrase that?" }]);
     } finally {
       setLoading(false);
     }
@@ -216,12 +387,11 @@ export default function GlobeAIChat({ globeRef, onWorkersFound, onMarkerAdd, onM
 
   return (
     <div className={`flex flex-col h-full relative ${className}`}>
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4 space-y-4 min-h-0 scrollbar-hide">
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[85%] px-4 py-3 rounded-2xl text-[13px] leading-relaxed shadow-lg ${
+              className={`max-w-[85%] px-4 py-3 rounded-2xl text-[13px] leading-relaxed shadow-lg whitespace-pre-wrap ${
                 msg.role === "user"
                   ? "text-black font-semibold rounded-br-none"
                   : "text-white/90 rounded-bl-none border border-white/[0.08] backdrop-blur-sm"
@@ -246,7 +416,6 @@ export default function GlobeAIChat({ globeRef, onWorkersFound, onMarkerAdd, onM
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       <div className="px-4 pb-6 pt-2 shrink-0 border-t border-white/[0.06] bg-gradient-to-t from-black/20 to-transparent">
         <div className="relative flex items-center">
           <input
@@ -254,7 +423,7 @@ export default function GlobeAIChat({ globeRef, onWorkersFound, onMarkerAdd, onM
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="Search workers globally..."
+            placeholder={conversationState === "collecting" ? "Describe the work you need done..." : "Reply to the AI assistant..."}
             className="flex-1 h-12 pl-4 pr-12 rounded-2xl bg-white/[0.03] border border-white/[0.08] text-white text-[13px] placeholder:text-white/20 focus:outline-none focus:border-white/20 focus:bg-white/[0.05] transition-all"
           />
           <button
