@@ -3,15 +3,13 @@
 import { useEffect, useRef } from "react";
 
 type ReporterProps = {
-  /*  ⎯⎯ props are only provided on the global-error page ⎯⎯ */
   error?: Error & { digest?: string };
   reset?: () => void;
 };
 
 export default function ErrorReporter({ error, reset }: ReporterProps) {
-  /* ─ instrumentation shared by every route ─ */
   const lastOverlayMsg = useRef("");
-  const pollRef = useRef<NodeJS.Timeout>();
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const inIframe = window.parent !== window;
@@ -46,11 +44,11 @@ export default function ErrorReporter({ error, reset }: ReporterProps) {
 
     const pollOverlay = () => {
       const overlay = document.querySelector("[data-nextjs-dialog-overlay]");
-      const node =
-        overlay?.querySelector(
-          "h1, h2, .error-message, [data-nextjs-dialog-body]"
-        ) ?? null;
-      const txt = node?.textContent ?? node?.innerHTML ?? "";
+      const node = overlay?.querySelector(
+        "h1, h2, .error-message, [data-nextjs-dialog-body]"
+      );
+      const contentNode = node as HTMLElement | null;
+      const txt = contentNode?.textContent ?? contentNode?.innerHTML ?? "";
       if (txt && txt !== lastOverlayMsg.current) {
         lastOverlayMsg.current = txt;
         send({
@@ -68,11 +66,12 @@ export default function ErrorReporter({ error, reset }: ReporterProps) {
     return () => {
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onReject);
-      pollRef.current && clearInterval(pollRef.current);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+      }
     };
   }, []);
 
-  /* ─ extra postMessage when on the global-error route ─ */
   useEffect(() => {
     if (!error) return;
     window.parent.postMessage(
@@ -91,10 +90,8 @@ export default function ErrorReporter({ error, reset }: ReporterProps) {
     );
   }, [error]);
 
-  /* ─ ordinary pages render nothing ─ */
   if (!error) return null;
 
-  /* ─ global-error UI ─ */
   return (
     <html>
       <body className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
@@ -104,7 +101,7 @@ export default function ErrorReporter({ error, reset }: ReporterProps) {
               Something went wrong!
             </h1>
             <p className="text-muted-foreground">
-              An unexpected error occurred. Please try again fixing with Orchids
+              An unexpected error occurred. Please try again.
             </p>
           </div>
           <div className="space-y-2">
@@ -127,6 +124,15 @@ export default function ErrorReporter({ error, reset }: ReporterProps) {
                   )}
                 </pre>
               </details>
+            )}
+            {reset && (
+              <button
+                type="button"
+                onClick={reset}
+                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+              >
+                Try again
+              </button>
             )}
           </div>
         </div>

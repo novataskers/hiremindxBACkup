@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const industry = searchParams.get('industry');
     const search = searchParams.get('search');
 
-    let conditions = [eq(leads.userId, session.user.id)];
+    const conditions = [eq(leads.userId, session.user.id)];
 
     if (status) {
       const validStatuses = ['new', 'contacted', 'replied', 'qualified', 'rejected'];
@@ -37,7 +37,9 @@ export async function GET(request: NextRequest) {
         like(leads.contactName, `%${search}%`),
         like(leads.contactEmail, `%${search}%`)
       );
-      conditions.push(searchCondition);
+      if (searchCondition) {
+        conditions.push(searchCondition);
+      }
     }
 
     const results = await db.select()

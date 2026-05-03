@@ -6,7 +6,7 @@ import { auth } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -20,7 +20,7 @@ export async function GET(
       );
     }
 
-    const { id } = context.params;
+    const { id } = await context.params;
 
     if (!id || isNaN(parseInt(id))) {
       return NextResponse.json(
@@ -63,7 +63,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -77,7 +77,7 @@ export async function PUT(
       );
     }
 
-    const { id } = context.params;
+    const { id } = await context.params;
 
     if (!id || isNaN(parseInt(id))) {
       return NextResponse.json(
@@ -216,7 +216,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth.api.getSession({
@@ -230,7 +230,7 @@ export async function DELETE(
       );
     }
 
-    const { id } = context.params;
+    const { id } = await context.params;
 
     if (!id || isNaN(parseInt(id))) {
       return NextResponse.json(

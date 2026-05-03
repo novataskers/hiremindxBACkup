@@ -99,7 +99,10 @@ export function MarketAgentCard({ prompt, conversationHistory = [], onDone }: Ma
         body: JSON.stringify({ prompt, conversationHistory }),
       });
 
-      if (!res.ok) throw new Error("Market analysis failed");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Market analysis failed");
+      }
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buf = "";

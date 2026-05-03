@@ -26,6 +26,14 @@ import {
   Link as LinkIcon,
   Package,
   Pencil,
+  Wallet,
+  CreditCard,
+  Banknote,
+  ArrowDownToLine,
+  BadgePoundSterling,
+  Shield,
+  History,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -136,6 +144,19 @@ export default function ProfilePage() {
   const [savingOffer, setSavingOffer] = useState(false);
   const offerFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Financial state
+  const [walletData, setWalletData] = useState<any>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [loadingWallet, setLoadingWallet] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawMethod, setWithdrawMethod] = useState("");
+  const [processingWithdraw, setProcessingWithdraw] = useState(false);
+  const [showAddPayment, setShowAddPayment] = useState(false);
+  const [newPmType, setNewPmType] = useState("");
+  const [newPmDetails, setNewPmDetails] = useState({ cardNumber: "", expiry: "", cvv: "", name: "", email: "", accountId: "" });
+
   useEffect(() => {
     const fetchProfile = async () => {
       if (!session?.user?.id) { setLoading(false); return; }
@@ -177,6 +198,89 @@ export default function ProfilePage() {
     };
     if (!isPending) fetchProfile();
   }, [session, isPending]);
+
+  // Fetch financial data
+  useEffect(() => {
+    if (!session?.user?.id || !profile) return;
+    const fetchFinancialData = async () => {
+      setLoadingWallet(true);
+      try {
+        const [walletRes, pmRes] = await Promise.all([
+          fetch("/api/community/wallet"),
+          fetch("/api/community/payment-methods"),
+        ]);
+        const walletJson = await walletRes.json();
+        const pmJson = await pmRes.json();
+        if (walletJson.wallet) setWalletData(walletJson.wallet);
+        if (walletJson.transactions) setTransactions(walletJson.transactions);
+        if (pmJson.paymentMethods) setPaymentMethods(pmJson.paymentMethods);
+      } catch (err) {
+        console.error("Error fetching financial data:", err);
+      } finally {
+        setLoadingWallet(false);
+      }
+    };
+    fetchFinancialData();
+  }, [session?.user?.id, profile]);
+
+  const handleWithdraw = async () => {
+    if (!withdrawAmount || !withdrawMethod) { toast.error("Please fill all fields"); return; }
+    setProcessingWithdraw(true);
+    try {
+      const res = await fetch("/api/community/wallet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: Number(withdrawAmount), withdrawalMethod: withdrawMethod }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Withdrawal processed!");
+        setShowWithdrawModal(false);
+        setWithdrawAmount("");
+        setWithdrawMethod("");
+        // Refresh wallet
+        const walletRes = await fetch("/api/community/wallet");
+        const walletJson = await walletRes.json();
+        if (walletJson.wallet) setWalletData(walletJson.wallet);
+        if (walletJson.transactions) setTransactions(walletJson.transactions);
+      } else {
+        toast.error(data?.error || "Withdrawal failed");
+      }
+    } catch { toast.error("Withdrawal failed"); }
+    finally { setProcessingWithdraw(false); }
+  };
+
+  const handleAddPm = async () => {
+    if (!newPmType) { toast.error("Select a type"); return; }
+    const isCard = newPmType === "debit_card" || newPmType === "credit_card";
+    const isEmail = newPmType === "paypal" || newPmType === "wise";
+    const last4 = isCard ? newPmDetails.cardNumber.slice(-4) : undefined;
+    const [expiryMonth, expiryYear] = isCard ? newPmDetails.expiry.split("/").map(Number) : [undefined, undefined];
+    const labels: Record<string, string> = { debit_card: "Debit Card", credit_card: "Credit Card", paypal: "PayPal", wise: "Wise", payoneer: "Payoneer", bank_swift: "Bank (SWIFT)" };
+    const label = isCard ? `${labels[newPmType]} ending ${last4}` : isEmail ? `${labels[newPmType]} - ${newPmDetails.email}` : `${labels[newPmType]} - ${newPmDetails.accountId || "Account"}`;
+    try {
+      const res = await fetch("/api/community/payment-methods", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: newPmType, label, last4, expiryMonth, expiryYear: expiryYear && expiryYear < 100 ? 2000 + expiryYear : expiryYear, email: isEmail ? newPmDetails.email : undefined, accountId: newPmDetails.accountId || undefined, isDefault: paymentMethods.length === 0 }),
+      });
+      const data = await res.json();
+      if (res.ok && data.paymentMethod) {
+        setPaymentMethods((prev) => [...prev, data.paymentMethod]);
+        setShowAddPayment(false);
+        setNewPmType("");
+        setNewPmDetails({ cardNumber: "", expiry: "", cvv: "", name: "", email: "", accountId: "" });
+        toast.success("Payment method added!");
+      } else { toast.error(data?.error || "Failed"); }
+    } catch { toast.error("Failed to add"); }
+  };
+
+  const handleDeletePm = async (id: number) => {
+    try {
+      const res = await fetch(`/api/community/payment-methods?id=${id}`, { method: "DELETE" });
+      if (res.ok) { setPaymentMethods((prev) => prev.filter((pm) => pm.id !== id)); toast.success("Removed"); }
+    } catch { toast.error("Failed"); }
+  };
 
   const handleSave = async () => {
     if (!session?.user?.id) return;
@@ -552,7 +656,192 @@ export default function ProfilePage() {
           </motion.div>
         )}
 
+        {/* ── Freelancer Balance & Wallet ── */}
+        {isFreelancer && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className={card}>
+            <div className="flex items-center justify-between mb-4">
+              <p className={sectionLabel}>Balance & Wallet</p>
+              {walletData && walletData.availableBalance > 0 && (
+                <button onClick={() => setShowWithdrawModal(true)} className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors border border-emerald-500/20 px-3 py-1.5 rounded-xl hover:bg-emerald-500/10">
+                  <ArrowDownToLine className="w-3.5 h-3.5" /> Withdraw
+                </button>
+              )}
+            </div>
 
+            {loadingWallet ? (
+              <div className="text-center py-6"><Loader2 className="w-6 h-6 mx-auto animate-spin text-white/20" /></div>
+            ) : walletData ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/15 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-emerald-400/60 mb-1">Available</p>
+                    <p className="text-xl font-black text-emerald-400">£{(walletData.availableBalance / 100).toFixed(2)}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/[0.03] border border-white/[0.08] p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">In Escrow</p>
+                    <p className="text-xl font-black text-white/60">£{(walletData.pendingBalance / 100).toFixed(2)}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-white/25 mb-1">Total Earned</p>
+                    <p className="text-sm font-bold text-white/50">£{(walletData.totalEarned / 100).toFixed(2)}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-white/25 mb-1">Total Withdrawn</p>
+                    <p className="text-sm font-bold text-white/50">£{(walletData.totalWithdrawn / 100).toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-6 rounded-xl border border-dashed border-white/[0.06]">
+                <Wallet className="w-7 h-7 mx-auto mb-2 text-white/10" />
+                <p className="text-sm text-white/30">No wallet data yet</p>
+              </div>
+            )}
+
+            {/* Withdraw Modal */}
+            {showWithdrawModal && (
+              <div className="mt-5 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.05] p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-emerald-300">Withdraw Funds</p>
+                  <button onClick={() => setShowWithdrawModal(false)} className="text-[11px] text-white/40 hover:text-white">Cancel</button>
+                </div>
+                <div>
+                  <Label className="text-xs text-white/40 mb-1.5 block">Amount (£)</Label>
+                  <input type="number" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} placeholder={`Max: £${walletData ? (walletData.availableBalance / 100).toFixed(2) : "0.00"}`} className={inp} />
+                </div>
+                <div>
+                  <Label className="text-xs text-white/40 mb-1.5 block">Withdraw To</Label>
+                  <select value={withdrawMethod} onChange={e => setWithdrawMethod(e.target.value)} className={selectCls}>
+                    <option value="">Select method</option>
+                    <option value="debit_card">Debit Card</option>
+                    <option value="credit_card">Credit Card</option>
+                    <option value="bank_swift">Bank Account (SWIFT)</option>
+                    <option value="payoneer">Payoneer</option>
+                    <option value="paypal">PayPal</option>
+                    <option value="wise">Wise</option>
+                  </select>
+                </div>
+                <div className="rounded-lg bg-blue-500/10 border border-blue-500/15 p-3 flex items-start gap-2">
+                  <Shield className="w-3.5 h-3.5 text-blue-400 mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-white/50">Transaction fees are covered by the platform. You receive the full amount.</p>
+                </div>
+                <button onClick={handleWithdraw} disabled={!withdrawAmount || !withdrawMethod || processingWithdraw} className="w-full h-11 rounded-xl bg-emerald-500 text-black text-sm font-bold hover:bg-emerald-400 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
+                  {processingWithdraw ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : <><ArrowDownToLine className="w-4 h-4" /> Withdraw</>}
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* ── Payment Methods (both) ── */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className={card}>
+          <div className="flex items-center justify-between mb-4">
+            <p className={sectionLabel}>Payment Methods</p>
+            {!showAddPayment && (
+              <button onClick={() => setShowAddPayment(true)} className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors border border-white/[0.08] px-3 py-1.5 rounded-xl hover:bg-white/[0.05]">
+                <Plus className="w-3.5 h-3.5" /> Add
+              </button>
+            )}
+          </div>
+
+          {paymentMethods.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {paymentMethods.map((pm: any) => (
+                <div key={pm.id} className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.08] bg-white/[0.03]">
+                  <div className="flex items-center gap-3">
+                    <CreditCard className="w-4 h-4 text-white/40" />
+                    <div>
+                      <p className="text-sm text-white/80">{pm.label}</p>
+                      {pm.isDefault && <span className="text-[10px] text-emerald-400 font-medium">Default</span>}
+                    </div>
+                  </div>
+                  <button onClick={() => handleDeletePm(pm.id)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-white/30 hover:text-red-400 transition-all"><X className="w-3.5 h-3.5" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {paymentMethods.length === 0 && !showAddPayment && (
+            <div className="text-center py-6 rounded-xl border border-dashed border-white/[0.06]">
+              <CreditCard className="w-7 h-7 mx-auto mb-2 text-white/10" />
+              <p className="text-sm text-white/30">No payment methods saved</p>
+            </div>
+          )}
+
+          {showAddPayment && (
+            <div className="rounded-xl border border-dashed border-white/[0.1] bg-white/[0.02] p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-white">Add Payment Method</p>
+                <button onClick={() => { setShowAddPayment(false); setNewPmType(""); }} className="text-[11px] text-white/40 hover:text-white">Cancel</button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { v: "debit_card", l: "Debit Card" },
+                  { v: "credit_card", l: "Credit Card" },
+                  { v: "paypal", l: "PayPal" },
+                  { v: "wise", l: "Wise" },
+                  { v: "payoneer", l: "Payoneer" },
+                  { v: "bank_swift", l: "SWIFT" },
+                ].map(({ v, l }) => (
+                  <button key={v} onClick={() => setNewPmType(v)} className={`p-2.5 rounded-xl border text-[11px] font-semibold text-center transition-all ${newPmType === v ? "border-[#f5c518]/30 bg-[#f5c518]/10 text-[#f5c518]" : "border-white/[0.08] text-white/40 hover:border-white/15"}`}>{l}</button>
+                ))}
+              </div>
+              {(newPmType === "debit_card" || newPmType === "credit_card") && (
+                <div className="space-y-3">
+                  <input placeholder="Card Number" value={newPmDetails.cardNumber} onChange={e => setNewPmDetails(p => ({ ...p, cardNumber: e.target.value.replace(/\D/g, "").slice(0, 16) }))} className={inp} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input placeholder="MM/YY" value={newPmDetails.expiry} onChange={e => setNewPmDetails(p => ({ ...p, expiry: e.target.value }))} className={inp} />
+                    <input placeholder="CVV" value={newPmDetails.cvv} onChange={e => setNewPmDetails(p => ({ ...p, cvv: e.target.value.replace(/\D/g, "").slice(0, 4) }))} className={inp} />
+                  </div>
+                </div>
+              )}
+              {(newPmType === "paypal" || newPmType === "wise") && (
+                <input placeholder={`${newPmType === "paypal" ? "PayPal" : "Wise"} Email`} value={newPmDetails.email} onChange={e => setNewPmDetails(p => ({ ...p, email: e.target.value }))} className={inp} />
+              )}
+              {(newPmType === "payoneer" || newPmType === "bank_swift") && (
+                <input placeholder={newPmType === "payoneer" ? "Payoneer Account ID" : "SWIFT / Account Number"} value={newPmDetails.accountId} onChange={e => setNewPmDetails(p => ({ ...p, accountId: e.target.value }))} className={inp} />
+              )}
+              {newPmType && (
+                <button onClick={handleAddPm} className="w-full h-10 rounded-xl bg-white text-black text-sm font-bold hover:bg-white/90 transition-all">Save Payment Method</button>
+              )}
+            </div>
+          )}
+        </motion.div>
+
+        {/* ── Transaction History ── */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }} className={card}>
+          <p className={sectionLabel}>Transaction History</p>
+          {transactions.length === 0 ? (
+            <div className="text-center py-6 mt-3 rounded-xl border border-dashed border-white/[0.06]">
+              <History className="w-7 h-7 mx-auto mb-2 text-white/10" />
+              <p className="text-sm text-white/30">No transactions yet</p>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {transactions.map((tx: any) => (
+                <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${tx.type === "credit" ? "bg-emerald-500/15 text-emerald-400" : tx.type === "withdrawal" ? "bg-amber-500/15 text-amber-400" : "bg-white/5 text-white/40"}`}>
+                      {tx.type === "credit" ? <BadgePoundSterling className="w-4 h-4" /> : <ArrowDownToLine className="w-4 h-4" />}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white/80">{tx.description}</p>
+                      <p className="text-[10px] text-white/30">{new Date(tx.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-sm font-bold ${tx.type === "credit" ? "text-emerald-400" : "text-amber-400"}`}>
+                      {tx.type === "credit" ? "+" : "-"}£{(tx.netAmount / 100).toFixed(2)}
+                    </p>
+                    <p className={`text-[10px] ${tx.status === "completed" ? "text-emerald-400/60" : "text-amber-400/60"}`}>{tx.status}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
 
         {/* ── Save Button ── */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="flex justify-center mb-5">

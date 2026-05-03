@@ -6,16 +6,17 @@ import { headers } from "next/headers"
 import { db } from "@/db";
  
 export const getBaseURL = () => {
+	let url = "";
 	if (process.env.BETTER_AUTH_URL && !process.env.BETTER_AUTH_URL.includes("localhost")) {
-		return process.env.BETTER_AUTH_URL;
+		url = process.env.BETTER_AUTH_URL;
+	} else if (process.env.VERCEL === "1") {
+		url = "https://hiremindx.com";
+	} else if (process.env.VERCEL_URL) {
+		url = "https://hiremindx.com";
+	} else {
+		url = process.env.BETTER_AUTH_URL || "http://localhost:3000";
 	}
-	if (process.env.VERCEL === "1") {
-		return "https://hiremindx.com";
-	}
-	if (process.env.VERCEL_URL) {
-		return "https://hiremindx.com";
-	}
-	return process.env.BETTER_AUTH_URL || "http://localhost:3000";
+	return url.trim();
 };
 
 export const auth = betterAuth({

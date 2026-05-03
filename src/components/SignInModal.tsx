@@ -26,8 +26,14 @@ export default function SignInModal({ isOpen, onClose, redirectTo = "/" }: SignI
     try {
       await authClient.signIn.social({
         provider: "google",
-        callbackURL: "/",
-        errorCallbackURL: "/",
+        callbackURL: redirectTo,
+        errorCallbackURL: redirectTo,
+        scopes: [
+          "openid",
+          "email",
+          "profile",
+          "https://www.googleapis.com/auth/gmail.send",
+        ],
       });
     } catch (error) {
       toast.error("Failed to sign in with Google. Please try again.");
@@ -42,8 +48,15 @@ export default function SignInModal({ isOpen, onClose, redirectTo = "/" }: SignI
     try {
       await authClient.signIn.social({
         provider: "microsoft",
-        callbackURL: "/",
-        errorCallbackURL: "/",
+        callbackURL: redirectTo,
+        errorCallbackURL: redirectTo,
+        scopes: [
+          "openid",
+          "profile",
+          "email",
+          "offline_access",
+          "https://graph.microsoft.com/Mail.Send",
+        ],
       });
     } catch (error) {
       toast.error("Failed to sign in with Microsoft. Please try again.");

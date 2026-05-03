@@ -446,4 +446,139 @@ export const notifications = sqliteTable('notifications', {
   actionUrl: text('action_url'), // Link to act on this notification
   isRead: integer('is_read', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull(),
-});
+});
+
+export const subscriptions = sqliteTable('subscriptions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
+  planId: text('plan_id').notNull(),
+  status: text('status').notNull().default('pending'),
+  currency: text('currency').notNull().default('GBP'),
+  amount: integer('amount').notNull(),
+  interval: text('interval').notNull().default('month'),
+  stripeCustomerId: text('stripe_customer_id').unique(),
+  stripeSubscriptionId: text('stripe_subscription_id').unique(),
+  stripeCheckoutSessionId: text('stripe_checkout_session_id').unique(),
+  currentPeriodStart: integer('current_period_start', { mode: 'timestamp' }),
+  currentPeriodEnd: integer('current_period_end', { mode: 'timestamp' }),
+  cancelAtPeriodEnd: integer('cancel_at_period_end', { mode: 'boolean' }).notNull().default(false),
+  metadata: text('metadata', { mode: 'json' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
+});
+
+// Usage limits for free users
+export const userUsageLimits = sqliteTable('user_usage_limits', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
+  
+  // Deep analysis - limit 2 (Lifetime)
+  deepFeaturesCount: integer('deep_features_count').notNull().default(0),
+  deepFeaturesResetAt: text('deep_features_reset_at'), // No longer used for reset, kept for compatibility
+  
+  // Outreach - limit 2 (Lifetime)
+  outreachFeaturesCount: integer('outreach_features_count').notNull().default(0),
+  outreachFeaturesResetAt: text('outreach_features_reset_at'), // No longer used for reset
+  
+  // Attachments - limit 3 (24h reset)
+  attachmentCount: integer('attachment_count').notNull().default(0),
+  attachmentResetAt: text('attachment_reset_at'),
+  
+  // Chat messages - limit 30 (24h reset)
+  chatMessageCount: integer('chat_message_count').notNull().default(0),
+  chatMessageResetAt: text('chat_message_reset_at'),
+
+  // Community - limit 1 (Lifetime)
+  communityCount: integer('community_count').notNull().default(0),
+
+  // HireMindX Match (Bulk CV) - limit 1 (Lifetime)
+  matchCount: integer('match_count').notNull().default(0),
+  
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const canvasProjects = sqliteTable('canvas_projects', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  htmlContent: text('html_content').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+// Escrow Transactions — tracks contract payment lifecycle
+export const escrowTransactions = sqliteTable('escrow_transactions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  contractId: text('contract_id').notNull(), // matches the contract_xxx id from DMs
+  clientId: text('client_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  freelancerId: text('freelancer_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  contractAmount: integer('contract_amount').notNull(), // in pence/cents
+  platformFee: integer('platform_fee').notNull().default(1000), // £10 = 1000 pence
+  totalCharged: integer('total_charged').notNull(), // contractAmount + platformFee
+  currency: text('currency').notNull().default('GBP'),
+  status: text('status').notNull().default('pending'), // pending, funded, released, completed, cancelled, refunded
+  paymentMethodId: integer('payment_method_id'),
+  stripePaymentIntentId: text('stripe_payment_intent_id'),
+  fundedAt: text('funded_at'),
+  releasedAt: text('released_at'),
+  completedAt: text('completed_at'),
+  cancelledAt: text('cancelled_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+// Payment Methods — saved payment instruments per user
+export const paymentMethods = sqliteTable('payment_methods', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(), // debit_card, credit_card, paypal, wise, payoneer, bank_swift
+  label: text('label').notNull(), // e.g. "Visa ending 4242", "PayPal - john@email.com"
+  last4: text('last4'), // for cards
+  cardBrand: text('card_brand'), // visa, mastercard, amex
+  expiryMonth: integer('expiry_month'), // for cards
+  expiryYear: integer('expiry_year'), // for cards
+  email: text('email'), // for paypal, wise
+  accountId: text('account_id'), // for payoneer, bank SWIFT
+  isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+// Freelancer Wallets — available and pending balance
+export const freelancerWallets = sqliteTable('freelancer_wallets', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
+  availableBalance: integer('available_balance').notNull().default(0), // in pence
+  pendingBalance: integer('pending_balance').notNull().default(0), // in pence (funds in escrow)
+  totalEarned: integer('total_earned').notNull().default(0), // lifetime earnings
+  totalWithdrawn: integer('total_withdrawn').notNull().default(0), // lifetime withdrawals
+  updatedAt: text('updated_at').notNull(),
+});
+
+// Wallet Transactions — full transaction history for freelancers
+export const walletTransactions = sqliteTable('wallet_transactions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(), // credit, withdrawal, fee_deduction, penalty
+  amount: integer('amount').notNull(), // in pence
+  fee: integer('fee').notNull().default(0), // transaction fee in pence
+  netAmount: integer('net_amount').notNull(), // amount after fee
+  contractId: text('contract_id'), // related contract
+  description: text('description').notNull(),
+  withdrawalMethod: text('withdrawal_method'), // debit_card, credit_card, paypal, wise, payoneer, bank_swift
+  status: text('status').notNull().default('completed'), // completed, pending, failed
+  createdAt: text('created_at').notNull(),
+});
+
+// Cancellation Records — tracks cancellations for penalty escalation
+export const cancellationRecords = sqliteTable('cancellation_records', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  userType: text('user_type').notNull(), // client or freelancer
+  contractId: text('contract_id').notNull(),
+  cancelledAt: text('cancelled_at').notNull(),
+  wasWithinGracePeriod: integer('was_within_grace_period', { mode: 'boolean' }).notNull().default(false),
+  penaltyApplied: text('penalty_applied'), // none, platform_fee, double_fee, ban
+  isBanned: integer('is_banned', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+});

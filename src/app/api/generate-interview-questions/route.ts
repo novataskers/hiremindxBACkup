@@ -57,6 +57,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Check usage limits
+    const { useFeature } = await import("@/lib/usage-limits");
+    const usageResult = await useFeature(userId, "interview_questions");
+    if (!usageResult.allowed) {
+      return NextResponse.json({
+        error: usageResult.upgradeMessage,
+        limitReached: true,
+        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+      }, { status: 429 });
+    }
+
     const body = await request.json();
     const { cvData, difficulty, department, purpose, questionCount = 10 } = body;
 

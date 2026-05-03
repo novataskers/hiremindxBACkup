@@ -466,8 +466,8 @@ async function extractCVContent(attachments: EmailAttachment[]): Promise<{ conte
               if (attachment.type === 'application/pdf') {
                 try {
                     const pdfBuffer = Buffer.from(base64Data, 'base64');
-                    const pdfParseMod = await import("pdf-parse/lib/pdf-parse.js");
-                    const pdfParseFunc = pdfParseMod.default || pdfParseMod;
+                    const pdfParseMod = await import('pdf-parse/lib/pdf-parse.js');
+                    const pdfParseFunc = (pdfParseMod.default || pdfParseMod) as (buffer: Buffer) => Promise<{ text?: string }>;
                     const pdfData = await pdfParseFunc(pdfBuffer);
                   rawText = pdfData.text || "";
                   console.log("PDF text extracted:", rawText.length, "chars");
@@ -604,77 +604,50 @@ Return the information clearly labeled. Be thorough — extract every detail you
 }
 
 function detectEmailDraftInText(response: string, state: ConversationState): { to?: string; subject?: string; body?: string } | null {
-  // Detect if AI showed an email draft in natural text format
-  // Common patterns: "Subject: X" followed by "Dear Y," or email body
+  const draft: { to?: string; subject?: string; body?: string } = {};
   
   // Look for subject line
-  const subjectMatch = response.match(/(?:\*\*)?Subject(?:\*\*)?:\s*(.+?)(?:\n|$)/i);
+  const subjectMatch = response.match(/(?:\*\*)?Subject(?:\*\*)?:\s*([^\n]+)/i);
+  if (subjectMatch) {
+    draft.subject = subjectMatch[1].replace(/[\*\n]/g, '').trim();
+  }
   
-  // Look for email recipient - could be "To: email@..." or "Dear [Name]"
-  const toMatch = response.match(/(?:\*\*)?To(?:\*\*)?:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+  // Find recipient email in the response itself
+  const emailInResponse = response.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+  if (emailInResponse) {
+    draft.to = emailInResponse[1];
+  } else {
+    // Search USER messages in reverse order for email addresses
+    const userMessages = state.conversationHistory.filter(m => m.role === "user").reverse();
+    for (const msg of userMessages) {
+      const emailInMsg = msg.content.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (emailInMsg) {
+        draft.to = emailInMsg[1];
+        break;
+      }
+    }
+  }
   
-  // Look for email body - text after "Dear X," until signature or end
-  const bodyMatch = response.match(/Dear\s+[^,]+,[\s\n]+([\s\S]+?)(?:(?:Best regards|Warm regards|Sincerely|Cheers|Kind regards|Thanks)[,\s]*[\s\n]*[A-Z][a-zA-Z\s]+$|$)/i);
+  // Look for email body - text starting with a greeting until a signature or end
+  const fullBodyMatch = response.match(/(?:Dear|Hi|Hello)\s+[^,:]+[,:\s]+[\s\S]+?(?:(?:Best regards|Warm regards|Sincerely|Cheers|Kind regards|Thanks)[,\s]*[\s\n]*(?:[A-Z][a-zA-Z\s]*)?(?:\n|$)|$)/i);
   
-  // Also check for body after a horizontal rule or code block
   const altBodyMatch = response.match(/---[\s\n]+([\s\S]+?)(?:---|\[ATTACHMENT|$)/i);
   
-  if (subjectMatch || bodyMatch || altBodyMatch) {
-    const draft: { to?: string; subject?: string; body?: string } = {};
-    
-    // Extract subject
-    if (subjectMatch) {
-      draft.subject = subjectMatch[1].replace(/[\*\n]/g, '').trim();
+  if (fullBodyMatch && fullBodyMatch[0]) {
+    draft.body = fullBodyMatch[0].replace(/\*\*/g, '').replace(/\*/g, '').trim();
+  } else if (altBodyMatch && altBodyMatch[1]) {
+    draft.body = altBodyMatch[1].replace(/\*\*/g, '').replace(/\*/g, '').replace(/\[ATTACHMENT:.*?\]/gi, '').trim();
+  } else if (draft.subject) {
+    // If we have a subject but no explicit greeting, treat the text after the subject as the body
+    const textAfterSubject = response.split(subjectMatch![0])[1];
+    if (textAfterSubject && textAfterSubject.trim().length > 20) {
+      draft.body = textAfterSubject.replace(/\*\*/g, '').replace(/\*/g, '').trim();
     }
-    
-      // Extract recipient email - prioritize: 1) AI response To: field, 2) User's most recent message with email, 3) History
-      if (toMatch) {
-        draft.to = toMatch[1].trim();
-      } else {
-        // First: search USER messages in reverse order (most recent first) for email addresses
-        const userMessages = state.conversationHistory
-          .filter(m => m.role === "user")
-          .reverse();
-        
-        for (const msg of userMessages) {
-          const emailInMsg = msg.content.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-          if (emailInMsg) {
-            draft.to = emailInMsg[1];
-            break;
-          }
-        }
-      }
-    
-    // Extract body - capture the full email content including greeting
-    if (bodyMatch && bodyMatch[0]) {
-      // Get full body starting from "Dear"
-      const fullBodyMatch = response.match(/Dear\s+[^,]+,[\s\S]+?(?:(?:Best regards|Warm regards|Sincerely|Cheers|Kind regards|Thanks|Cheers)[,\s]*[\s\n]*(?:[A-Z][a-zA-Z\s]*)?(?:\n|$))/i);
-      if (fullBodyMatch) {
-        let body = fullBodyMatch[0].trim();
-        body = body.replace(/\*\*/g, '').replace(/\*/g, '');
-        draft.body = body;
-      } else {
-        let body = bodyMatch[1].trim();
-        body = body.replace(/\*\*/g, '').replace(/\*/g, '');
-        // Reconstruct with greeting
-        const dearMatch = response.match(/Dear\s+[^,]+,/i);
-        if (dearMatch) {
-          draft.body = dearMatch[0] + '\n\n' + body;
-        } else {
-          draft.body = body;
-        }
-      }
-    } else if (altBodyMatch && altBodyMatch[1]) {
-      let body = altBodyMatch[1].trim();
-      body = body.replace(/\*\*/g, '').replace(/\*/g, '');
-      body = body.replace(/\[ATTACHMENT:.*?\]/gi, '').trim();
-      draft.body = body;
-    }
-    
-    // Only return if we have at least subject and body
-    if (draft.subject && draft.body && draft.body.length > 20) {
-      return draft;
-    }
+  }
+  
+  // Only return if we have at least subject and body
+  if (draft.subject && draft.body && draft.body.length > 20) {
+    return draft;
   }
   
   return null;
@@ -1469,7 +1442,7 @@ export async function processMessage(
       d.to = userEmails[0]; // Override with user's actual email
     }
     
-    let finalBody = d.body;
+    let finalBody = d.body ?? "";
     try { if (finalBody.includes("%")) finalBody = decodeURIComponent(finalBody); } catch {}
     
     // Only add signature if not already present
@@ -1486,7 +1459,7 @@ export async function processMessage(
     
     const customEmail: EmailDraft = { 
       company: "Custom Recipient", 
-      contact_email: d.to, 
+      contact_email: d.to ?? "", 
       subject: d.subject || "No Subject", 
       body: finalBody,
       attachments: state.pendingAttachments
@@ -1561,15 +1534,25 @@ export async function processMessage(
 
   // IMPORTANT: Detect if AI drafted an email in text format without using [ACTION:CUSTOM_EMAIL]
   // This happens when AI shows "Subject: X" and email body but doesn't use the action marker
-    if (!action && !state.customEmailDraft?.body) {
+    if (!action) {
       const draftDetection = detectEmailDraftInText(cleanResponse, state);
       if (draftDetection) {
         // Override with user's explicitly mentioned email if available
         if (userMentionedEmail && draftDetection.to !== userMentionedEmail[1]) {
           draftDetection.to = userMentionedEmail[1];
         }
+        
+        // Preserve previous recipient if AI dropped it in revision
+        if (state.customEmailDraft?.to && !draftDetection.to) {
+          draftDetection.to = state.customEmailDraft.to;
+        }
+        
         state.customEmailDraft = draftDetection;
         console.log("Detected email draft from text:", draftDetection);
+        
+        if (!finalResponse.includes("[OPTIONS:")) {
+          finalResponse += "\n\n[OPTIONS:Yes, send it|No, let me review]";
+        }
       }
     }
 
@@ -1689,7 +1672,7 @@ export async function processMessage(
           const d = state.customEmailDraft;
 
           if (d.to && d.subject && d.body) {
-            let finalBody = d.body;
+            let finalBody = d.body ?? "";
             try { if (finalBody.includes("%")) finalBody = decodeURIComponent(finalBody); } catch {}
             
             // Ensure name is in signature
@@ -1850,7 +1833,7 @@ export async function processMessage(
           case "SEND_EMAILS": {
           if (state.customEmailDraft && state.customEmailDraft.to && state.customEmailDraft.body) {
             const d = state.customEmailDraft;
-            let finalBody = d.body;
+            let finalBody = d.body ?? "";
             try { if (finalBody.includes("%")) finalBody = decodeURIComponent(finalBody); } catch {}
             
             if (state.profile.fullName && !finalBody.toLowerCase().includes(state.profile.fullName.toLowerCase())) {
@@ -1862,7 +1845,7 @@ export async function processMessage(
               : '';
             emails = [{ 
               company: "Custom Recipient", 
-              contact_email: d.to, 
+              contact_email: d.to ?? "", 
               subject: d.subject || "No Subject", 
               body: finalBody,
               attachments: state.pendingAttachments

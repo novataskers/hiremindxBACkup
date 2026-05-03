@@ -135,6 +135,17 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
+    // Check usage limits
+    const { useFeature } = await import("@/lib/usage-limits");
+    const usageResult = await useFeature(session.user.id, "email_outreach");
+    if (!usageResult.allowed) {
+      return NextResponse.json({
+        error: usageResult.upgradeMessage,
+        limitReached: true,
+        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+      }, { status: 429 });
+    }
+
     const body = await request.json();
     const { cvAnalysisId, count = 5 } = body;
 
@@ -180,10 +191,13 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
 
-    const expertise = cvAnalysisRecord[0].expertise;
-    const skills = typeof cvAnalysisRecord[0].skills === 'string' 
-      ? JSON.parse(cvAnalysisRecord[0].skills) 
-      : cvAnalysisRecord[0].skills;
+    const expertise = cvAnalysisRecord[0].expertise ?? 'general';
+    const rawSkills = cvAnalysisRecord[0].skills;
+    const skills = typeof rawSkills === 'string'
+      ? JSON.parse(rawSkills)
+      : Array.isArray(rawSkills)
+        ? rawSkills
+        : [];
     const category = getIndustryCategory(expertise);
 
     const generatedLeads = [];

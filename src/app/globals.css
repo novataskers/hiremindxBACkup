@@ -243,6 +243,13 @@
   select {
     font-size: 16px !important;
   }
+
+  select,
+  select option,
+  select optgroup {
+    color: oklch(0.985 0 0);
+    background-color: oklch(0.12 0 0);
+  }
 }
 
 /* Ensure HTML has the background to prevent white flashes on scroll */

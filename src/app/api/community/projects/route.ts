@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { clientProjects, communityProfiles, user } from "@/db/schema";
-import { eq, and, desc, like, or } from "drizzle-orm";
+import { eq, and, desc, like, or, ne } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
@@ -21,7 +21,10 @@ export async function GET(request: NextRequest) {
 
     let whereClause;
     if (userId) {
-      whereClause = eq(clientProjects.userId, userId);
+      whereClause = and(
+        eq(clientProjects.userId, userId),
+        ne(clientProjects.status, "closed")
+      );
     } else if (search) {
       const q = `%${search}%`;
       whereClause = and(
@@ -58,42 +61,64 @@ export async function GET(request: NextRequest) {
           .where(eq(user.id, project.userId))
           .get();
         
-        // Parse skills and extract location if stored there
+        // Parse skills and extract a project-specific location when present.
         let skills: string[] = [];
-        let location: string | null = null;
+        let projectLocation: string | null = null;
+        const reservedSkillTokens = new Set([
+          "tech",
+          "engineering",
+          "design",
+          "writing",
+          "marketing",
+          "video",
+          "trades",
+          "business",
+          "legal",
+          "all",
+          "remote",
+          "my location",
+        ]);
         
         try {
           if (project.skills) {
             const parsed = typeof project.skills === "string" ? JSON.parse(project.skills) : project.skills;
             if (Array.isArray(parsed)) {
-              // Location is often stored as second item when AI creates job
-              skills = parsed.filter((s: string) => 
-                !['tech', 'design', 'writing', 'marketing', 'video', 'trades', 'business', 'legal', 'all'].includes(s.toLowerCase())
-              );
-              const possibleLocation = parsed.find((s: string) => 
-                s && s.length > 2 && !['tech', 'design', 'writing', 'marketing', 'video', 'trades', 'business', 'legal'].includes(s.toLowerCase())
-              );
-              if (possibleLocation && possibleLocation.length < 50) {
-                location = possibleLocation;
-              }
+              const normalizedItems = parsed
+                .filter((item) => typeof item === "string")
+                .map((item: string) => item.trim())
+                .filter(Boolean);
+
+              skills = normalizedItems.filter((item) => !reservedSkillTokens.has(item.toLowerCase()));
+
+              projectLocation =
+                normalizedItems.find((item) => {
+                  const lower = item.toLowerCase();
+                  return (
+                    !reservedSkillTokens.has(lower) &&
+                    (item.includes(",") ||
+                      /\b(city|town|village|district|state|region|country|area|neighborhood)\b/i.test(item) ||
+                      item.split(/\s+/).length >= 2)
+                  );
+                }) || null;
             }
           }
         } catch {
           skills = [];
         }
         
-        // Also try to extract location from description
-        if (!location && project.description) {
-          const locMatch = project.description.match(/\*\*Location:\*\*\s*(.+)/);
+        // Also try to extract location from description.
+        if (!projectLocation && project.description) {
+          const locMatch = project.description.match(/\*\*Location:\*\*\s*(.+)/i);
           if (locMatch) {
-            location = locMatch[1].trim();
+            projectLocation = locMatch[1].trim();
           }
         }
         
         return {
           ...project,
           skills,
-          location: location || profile?.location || null,
+          projectLocation,
+          location: projectLocation || profile?.location || null,
           profile,
           authorName: profile?.displayName || userInfo?.name || "Client",
           clientImage: userInfo?.image || null,
@@ -118,6 +143,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = session.user.id;
+
+    // Check usage limits
+    const { useFeature } = await import("@/lib/usage-limits");
+    const usageResult = await useFeature(userId, "community_post");
+    if (!usageResult.allowed) {
+      return NextResponse.json({
+        error: usageResult.upgradeMessage,
+        limitReached: true,
+        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+      }, { status: 429 });
+    }
+
     const body = await request.json();
     const now = new Date().toISOString();
 
@@ -130,7 +168,7 @@ export async function POST(request: NextRequest) {
     const result = await db
       .insert(clientProjects)
       .values({
-        userId: session.user.id,
+        userId: session.user!.id,
         title: body.title,
         description: body.description || null,
         category: body.category,
@@ -174,7 +212,7 @@ export async function DELETE(request: NextRequest) {
       .where(
         and(
           eq(clientProjects.id, parseInt(projectId)),
-          eq(clientProjects.userId, session.user.id)
+          eq(clientProjects.userId, session.user!.id)
         )
       );
 

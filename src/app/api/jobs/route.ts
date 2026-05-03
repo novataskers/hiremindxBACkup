@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     const sort = searchParams.get('sort') ?? 'createdAt';
     const order = searchParams.get('order') ?? 'desc';
 
-    let query = db.select().from(jobs);
+    const baseQuery = db.select().from(jobs);
 
     // Build where conditions
     const conditions = [];
@@ -70,17 +70,18 @@ export async function GET(request: NextRequest) {
       conditions.push(like(jobs.location, `%${location}%`));
     }
 
-    // Apply conditions
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
+    const filteredQuery = conditions.length > 0
+      ? baseQuery.where(and(...conditions))
+      : baseQuery;
 
     // Apply sorting
     const sortColumn = sort === 'createdAt' ? jobs.createdAt : jobs.createdAt;
-    query = order === 'asc' ? query.orderBy(sortColumn) : query.orderBy(desc(sortColumn));
+    const sortedQuery = order === 'asc'
+      ? filteredQuery.orderBy(sortColumn)
+      : filteredQuery.orderBy(desc(sortColumn));
 
     // Apply pagination
-    const results = await query.limit(limit).offset(offset);
+    const results = await sortedQuery.limit(limit).offset(offset);
 
     return NextResponse.json(results, { status: 200 });
   } catch (error) {

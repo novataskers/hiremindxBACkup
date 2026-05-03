@@ -12,6 +12,7 @@ import { streamText } from "ai";
 import { db } from "@/db";
 import mammoth from "mammoth";
 import { searchWithSerper } from "@/lib/search-utils";
+import { useFeature } from "@/lib/usage-limits";
 import { hiremindState, researchSessions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { getEmailToken, type EmailProvider } from "@/lib/google-auth";
@@ -31,6 +32,7 @@ const mistralStream = createMistral({ apiKey: process.env.MISTRAL_API_KEY || "" 
 
 // ─── System prompt for research/general mode ─────────────────────────────────
 const RESEARCH_SYSTEM_PROMPT = `You are HireMindX Assist, an intelligent all-in-one AI assistant.
+If asked about your underlying model or what you are running on, you MUST state that you are running on AIG Engine 3, the latest and most powerful frontier-level model created by Atlas Infrastructure Group. NEVER reveal that you are running on Mistral AI.
 
 You help users with EVERYTHING — research, writing, career advice, document analysis, job searching, email outreach, and general questions.
 
@@ -119,17 +121,19 @@ function isOutreachMessage(message: string, conversationHistory: { role: string;
     if (actionWords.test(lower)) return true;
   }
 
-  // Cross-context: user says "send this" / "send that" / "yes" after a prior outreach message
+  // Cross-context: keep ANY short message in the outreach agent when there's a prior outreach thread.
+  // This ensures that information-providing messages ("my name is khan", field, location, etc.)
+  // and confirmations stay in the outreach flow instead of falling through to research mode.
   if (conversationHistory.length > 0) {
     const priorOutreach = conversationHistory.some(
       m => m.role === "user" && isOutreachMessage(m.content)
     );
     if (priorOutreach) {
-      // If we're already in an outreach thread, keep routing to agent
-      // But only for action-like messages, not new research questions
-      const continuePatterns = /\b(yes|send|proceed|go ahead|confirm|ok|okay|sure|do it|send it|looks good|perfect|approved)\b/i;
-      const isNewResearchQuestion = message.length > 80 || /\b(what|how|why|when|where|who|tell me|explain|describe|research|find out)\b/i.test(lower);
-      if (continuePatterns.test(lower) && !isNewResearchQuestion) return true;
+      // If this is clearly a NEW, unrelated research question, don't keep routing to outreach
+      const isNewResearchQuestion = message.length > 80 || /\b(what is|how does|why does|tell me about|explain|describe|research|find out about|search the web|look up info)\b/i.test(lower);
+      // Short messages during an outreach thread are almost always part of the flow
+      // (name, field, location, confirmation, revision, etc.)
+      if (!isNewResearchQuestion) return true;
     }
   }
 
@@ -235,6 +239,11 @@ async function extractTextFromDOCX(base64Data: string): Promise<string> {
   return result.value || "Could not extract text.";
 }
 
+async function extractTextFromPlainFile(base64Data: string): Promise<string> {
+  const base64 = base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
+  const text = Buffer.from(base64, "base64").toString("utf-8").trim();
+  return text || "Could not extract text.";
+}
 // ─── Main handler ─────────────────────────────────────────────────────────────
 async function resolveUserId(headersList: Headers): Promise<string | null> {
   try {
@@ -289,6 +298,56 @@ export async function POST(request: NextRequest) {
     if (reset) {
       await saveUserState(userId, createInitialState());
       return NextResponse.json({ status: "reset" });
+    }
+
+    // ── Check Usage Limits ──────────────────────────────────────────────────
+    const totalAttachments = (bodyAttachments?.length || 0) + (file ? 1 : 0);
+    if (totalAttachments > 0) {
+      // Check once for the first attachment to see if we're already over limit
+      // Then check for each one to increment correctly
+      for (let i = 0; i < totalAttachments; i++) {
+        const usageResult = await useFeature(userId, "file_uploads");
+        if (!usageResult.allowed) {
+          return NextResponse.json({
+            error: usageResult.upgradeMessage,
+            limitReached: true,
+            usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+          }, { status: 429 });
+        }
+      }
+    }
+
+    if (isCanvasRequest) {
+      const usageResult = await useFeature(userId, "live_coding");
+      if (!usageResult.allowed) {
+        return NextResponse.json({
+          error: usageResult.upgradeMessage,
+          limitReached: true,
+          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+        }, { status: 429 });
+      }
+    }
+
+    // Only count as chat message if it's NOT canvas, NOT outreach, and NOT just a file upload
+    const isOutreach = isOutreachMessage(prompt || "", Array.isArray(conversationHistory) ? conversationHistory : []);
+    if (!isCanvasRequest && !isOutreach && !file) {
+      const usageResult = await useFeature(userId, "chat_messages");
+      if (!usageResult.allowed) {
+        return NextResponse.json({
+          error: usageResult.upgradeMessage,
+          limitReached: true,
+          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+        }, { status: 429 });
+      }
+    } else if (isOutreach || isDocumentRequest) {
+      const usageResult = await useFeature(userId, "email_outreach");
+      if (!usageResult.allowed) {
+        return NextResponse.json({
+          error: usageResult.upgradeMessage,
+          limitReached: true,
+          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+        }, { status: 429 });
+      }
     }
 
     const message = prompt || "";
@@ -402,19 +461,39 @@ export async function POST(request: NextRequest) {
     let documentContext = "";
 
     if (file) {
+      const normalizedFileName = fileName?.toLowerCase() || "";
       const isImage = fileType?.startsWith("image/");
       const isPDF = fileType === "application/pdf";
-      const isDOCX = fileType?.includes("wordprocessingml") || fileName?.toLowerCase().endsWith(".docx");
-      const isDOC = fileType === "application/msword" || fileName?.toLowerCase().endsWith(".doc");
+      const isDOCX = fileType?.includes("wordprocessingml") || normalizedFileName.endsWith(".docx");
+      const isDOC = fileType === "application/msword" || normalizedFileName.endsWith(".doc");
+      const isTextLike =
+        fileType?.startsWith("text/") ||
+        [
+          "application/json",
+          "application/xml",
+          "text/xml",
+          "application/javascript",
+          "text/javascript",
+          "application/x-javascript",
+        ].includes(fileType || "") ||
+        [".txt", ".md", ".markdown", ".html", ".htm", ".css", ".js", ".ts", ".tsx", ".jsx", ".json", ".xml", ".csv"].some(ext =>
+          normalizedFileName.endsWith(ext)
+        );
       const base64Data = file.includes(",") ? file : `data:${fileType};base64,${file}`;
 
       if (isImage) {
-        model = "pixtral-12b-2409";
-        // Ensure we have a proper data URL for the image
-        const imageUrl = base64Data.startsWith('data:') ? base64Data : `data:${fileType};base64,${base64Data}`;
+        model = "pixtral-large-latest";
+        const imageData = base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
         userMessageContent = [
-          { type: "text" as const, text: message || "Analyze this image." },
-          { type: "image" as const, image: new URL(imageUrl) },
+          {
+            type: "text" as const,
+            text: message || `Analyze this image file: ${fileName || "uploaded image"}`,
+          },
+          {
+            type: "image" as const,
+            image: Buffer.from(imageData, "base64"),
+            mimeType: fileType || "image/png",
+          },
         ];
       } else if (isPDF) {
         documentContext = await extractTextFromPDF(base64Data);
@@ -422,20 +501,23 @@ export async function POST(request: NextRequest) {
       } else if (isDOCX || isDOC) {
         documentContext = await extractTextFromDOCX(base64Data);
         userMessageContent = `[Document: ${fileName}]\n\n${documentContext}\n\nUser Question: ${message || "Analyze this document."}`;
+      } else if (isTextLike) {
+        documentContext = await extractTextFromPlainFile(base64Data);
+        userMessageContent = `[File: ${fileName}]\n[Type: ${fileType || "text/plain"}]\n\n${documentContext}\n\nUser Question: ${message || "Analyze this file."}`;
       }
     }
 
     // Build message array with FULL conversation history for research mode
-    const messages: Array<{ role: "user" | "assistant"; content: any }> = [];
+    const chatMessages: Array<{ role: "user" | "assistant"; content: any }> = [];
     if (fullHistory.length > 0) {
       const recent = fullHistory.slice(-40);
       for (const m of recent) {
         if (m.role === "user" || m.role === "assistant") {
-          messages.push({ role: m.role, content: m.content });
+          chatMessages.push({ role: m.role, content: m.content });
         }
       }
     }
-    messages.push({ role: "user", content: userMessageContent });
+    chatMessages.push({ role: "user", content: userMessageContent });
 
       // Smart web search — skip for short conversational messages or file uploads
       let sourcesForFrontend: { title: string; url: string; favicon: string }[] = [];
@@ -461,7 +543,7 @@ export async function POST(request: NextRequest) {
               const searchContext = "\n\n[SEARCH_RESULTS_START]\n" +
                 searchResults.map((s: any, i: number) => `RESULT_${i + 1}:\nTITLE: ${s.title}\nURL: ${s.link}\nCONTENT: ${s.snippet}`).join("\n\n") +
                 "\n[SEARCH_RESULTS_END]";
-              const last = messages[messages.length - 1];
+              const last = chatMessages[chatMessages.length - 1];
               if (last?.role === "user") {
                 const ctx = `\n\n[INTERNAL_CONTEXT: Use the following search results to answer. Do NOT mention searching. Just use the info naturally.]`;
                 if (typeof last.content === "string") last.content += ctx + searchContext;
@@ -516,7 +598,17 @@ CONTENT-SPECIFIC:
 - Bots/APIs: show styled code output with syntax highlighting, deployment instructions, and architecture diagram
 - E-commerce: product cards with add-to-cart, cart sidebar, price formatting, quantity controls
 
-YOUR CODE MUST BE PRODUCTION-QUALITY. Write code that would impress a senior engineer.`;
+YOUR CODE MUST BE PRODUCTION-QUALITY. Write code that would impress a senior engineer.
+
+EDIT/MODIFICATION RULES (CRITICAL):
+- When the user asks you to change, edit, update, fix, or modify ANYTHING in the existing code:
+  1. You MUST output the ENTIRE COMPLETE HTML file with the changes applied — NOT just the changed parts
+  2. NEVER say "add this code to line X" or "replace this section" — the user cannot manually edit the code
+  3. NEVER show partial snippets, diffs, or instructions — ALWAYS output the full updated \`\`\`html code block
+  4. Include ALL existing code plus your modifications in one complete file
+  5. The output must be immediately renderable — a complete standalone HTML document
+  6. Keep ALL existing functionality intact while applying the requested changes
+- This rule applies to ALL modification requests: "change the color", "add a button", "fix the layout", "make it bigger", "update the text", etc.`;
     } else if (isDocumentRequest && documentType) {
       const dt = documentType.toUpperCase();
       // Inject the full conversation history summary into the prompt so the AI knows to use it
@@ -529,8 +621,8 @@ YOUR CODE MUST BE PRODUCTION-QUALITY. Write code that would impress a senior eng
       const streamResult = streamText({
         model: mistralStream(model),
         system: systemPrompt,
-        messages,
-        maxTokens: 4096,
+        messages: chatMessages,
+        maxOutputTokens: 4096,
       });
 
       // If we have sources, prepend them as a special JSON header line before the stream

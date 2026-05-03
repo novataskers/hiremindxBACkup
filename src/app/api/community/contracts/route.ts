@@ -1,0 +1,173 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { db } from "@/db";
+import { communityDMs, communityProfiles, user } from "@/db/schema";
+import { and, desc, eq, like, or } from "drizzle-orm";
+
+function buildAuthHeaders(req: NextRequest) {
+  const h = new Headers(req.headers);
+  const cookie = req.headers.get("cookie");
+  if (cookie) h.set("cookie", cookie);
+  const authz = req.headers.get("authorization");
+  if (authz) h.set("authorization", authz);
+  return h;
+}
+
+function parseContractOfferMessage(rawMessage: string) {
+  if (typeof rawMessage !== "string") return null;
+
+  if (rawMessage.startsWith("[CONTRACT_OFFER_JSON]")) {
+    try {
+      const parsed = JSON.parse(rawMessage.replace("[CONTRACT_OFFER_JSON]", ""));
+      if (parsed?.type === "contract_offer" && parsed?.contractId) {
+        return {
+          contractId: String(parsed.contractId),
+          title: String(parsed.title || "Contract Offer"),
+          amount: parsed.amount != null ? String(parsed.amount) : "",
+          timeline: String(parsed.timeline || ""),
+          milestones: String(parsed.milestones || ""),
+          description: String(parsed.description || ""),
+          createdAt: String(parsed.createdAt || ""),
+        };
+      }
+    } catch {}
+  }
+
+  if (!rawMessage.startsWith("[CONTRACT OFFER]")) return null;
+
+  const lines = rawMessage.split("\n");
+  const title = lines.find((line) => line.startsWith("Title: "))?.replace("Title: ", "") || "Contract Offer";
+  const amount = lines.find((line) => line.startsWith("Amount: "))?.replace("Amount: ", "").replace("$", "") || "";
+  const timeline = lines.find((line) => line.startsWith("Timeline: "))?.replace("Timeline: ", "") || "";
+  const milestones = lines.find((line) => line.startsWith("Milestones: "))?.replace("Milestones: ", "") || "";
+  const descriptionIndex = lines.findIndex((line) => line.trim() === "Description:");
+  const description = descriptionIndex >= 0 ? lines.slice(descriptionIndex + 1).join("\n").trim() : "";
+  const fallbackKey = rawMessage.replace(/\s+/g, " ").trim().slice(0, 120);
+
+  return {
+    contractId: `legacy_${fallbackKey}`,
+    title,
+    amount,
+    timeline,
+    milestones,
+    description,
+    createdAt: "",
+  };
+}
+
+function parseContractEventMessage(rawMessage: string) {
+  if (typeof rawMessage !== "string") return null;
+
+  const prefixes = ["[CONTRACT_RESPONSE]", "[CONTRACT_CANCEL]"] as const;
+  const matchedPrefix = prefixes.find((prefix) => rawMessage.startsWith(prefix));
+  if (!matchedPrefix) return null;
+
+  try {
+    const parsed = JSON.parse(rawMessage.replace(matchedPrefix, ""));
+    if (!parsed?.contractId) return null;
+
+    const action =
+      parsed.action === "accepted"
+        ? "accepted"
+        : parsed.action === "declined"
+          ? "declined"
+          : "cancelled";
+
+    return {
+      contractId: String(parsed.contractId),
+      action,
+      actedAt: String(parsed.actedAt || ""),
+      actorName: String(parsed.actorName || ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: buildAuthHeaders(req) });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rows = await db
+    .select()
+    .from(communityDMs)
+    .where(
+      and(
+        or(eq(communityDMs.senderId, session.user.id), eq(communityDMs.receiverId, session.user.id)),
+        or(
+          like(communityDMs.message, "[CONTRACT OFFER]%"),
+          like(communityDMs.message, "[CONTRACT_OFFER_JSON]%"),
+          like(communityDMs.message, "[CONTRACT_RESPONSE]%"),
+          like(communityDMs.message, "[CONTRACT_CANCEL]%")
+        )
+      )
+    )
+    .orderBy(desc(communityDMs.createdAt));
+
+  const contractMap = new Map<string, any>();
+
+  for (const msg of [...rows].reverse()) {
+    const offer = parseContractOfferMessage(msg.message);
+    if (offer) {
+      const partnerId = msg.senderId === session.user.id ? msg.receiverId : msg.senderId;
+      const current = contractMap.get(offer.contractId);
+      contractMap.set(offer.contractId, {
+        id: msg.id,
+        contractId: offer.contractId,
+        conversationKey: msg.conversationKey,
+        messageId: msg.id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        projectId: msg.projectId,
+        proposalId: msg.proposalId,
+        createdAt: msg.createdAt,
+        updatedAt: msg.createdAt,
+        title: offer.title,
+        amount: offer.amount,
+        timeline: offer.timeline,
+        milestones: offer.milestones,
+        description: offer.description,
+        status: current?.status || "pending",
+        statusActorName: current?.statusActorName || null,
+        statusUpdatedAt: current?.statusUpdatedAt || null,
+        partnerId,
+      });
+      continue;
+    }
+
+    const event = parseContractEventMessage(msg.message);
+    if (!event) continue;
+
+    const current = contractMap.get(event.contractId);
+    if (!current) continue;
+
+    contractMap.set(event.contractId, {
+      ...current,
+      status: event.action,
+      statusActorName: event.actorName || null,
+      statusUpdatedAt: event.actedAt || msg.createdAt,
+      updatedAt: event.actedAt || msg.createdAt,
+    });
+  }
+
+  const items = await Promise.all(
+    Array.from(contractMap.values()).map(async (contract) => {
+      const [profile] = await db.select().from(communityProfiles).where(eq(communityProfiles.userId, contract.partnerId));
+      const [u] = await db.select().from(user).where(eq(user.id, contract.partnerId));
+
+      return {
+        ...contract,
+        isSender: contract.senderId === session.user.id,
+        isReceiver: contract.receiverId === session.user.id,
+        isOngoing: contract.status === "accepted",
+        partnerName: profile?.displayName || u?.name || "Unknown",
+        partnerImage: u?.image || null,
+        partnerType: profile?.userType || "unknown",
+      };
+    })
+  );
+
+  return NextResponse.json({ contracts: items.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()) });
+}

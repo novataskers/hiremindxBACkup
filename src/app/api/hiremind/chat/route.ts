@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { db } from "@/db";
+import { useFeature } from "@/lib/usage-limits";
 
 export const maxDuration = 60;
 
@@ -226,6 +227,23 @@ export async function POST(request: NextRequest) {
 
     if (!chatInput) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    }
+
+    // Check usage limits
+    const usageResult = await useFeature(userId, "chat_messages");
+    if (!usageResult.allowed) {
+      return NextResponse.json({
+        error: usageResult.upgradeMessage,
+        output: `⚠️ **Daily limit reached!** ${usageResult.upgradeMessage}\n\nYou've used ${usageResult.currentUsage} of ${usageResult.limit} messages today.\n\n[Upgrade your plan →](/premium)`,
+        status: "limit_reached",
+        limitReached: true,
+        usage: {
+          used: usageResult.currentUsage,
+          limit: usageResult.limit,
+          remaining: usageResult.remaining,
+          plan: usageResult.plan,
+        },
+      }, { status: 429 });
     }
 
       let state = await loadUserState(userId);

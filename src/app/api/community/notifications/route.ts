@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 
 function buildAuthHeaders(req: NextRequest) {
   const h = new Headers(req.headers);
@@ -65,11 +65,26 @@ export async function PATCH(req: NextRequest) {
 
     const [updated] = await db.update(notifications)
       .set({ isRead: true })
-      .where(eq(notifications.id, Number(notificationId)))
+      .where(and(
+        eq(notifications.id, Number(notificationId)),
+        eq(notifications.userId, session.user.id)
+      ))
       .returning();
 
     return NextResponse.json({ notification: updated });
   } catch (error) {
     return NextResponse.json({ error: "Failed to read notification" }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: buildAuthHeaders(req) });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  try {
+    await db.delete(notifications).where(eq(notifications.userId, session.user.id));
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: "Failed to clear notifications" }, { status: 500 });
   }
 }

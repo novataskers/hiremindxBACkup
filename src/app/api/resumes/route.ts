@@ -17,6 +17,19 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = session.user.id;
+
+    // Check usage limits
+    const { useFeature } = await import("@/lib/usage-limits");
+    const usageResult = await useFeature(userId, "file_uploads");
+    if (!usageResult.allowed) {
+      return NextResponse.json({
+        error: usageResult.upgradeMessage,
+        code: "LIMIT_REACHED",
+        limitReached: true,
+        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+      }, { status: 429 });
+    }
+
     const body = await request.json();
 
     // Security check: reject if userId provided in body

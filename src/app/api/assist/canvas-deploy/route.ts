@@ -1,87 +1,89 @@
 /**
  * Canvas Deploy API
- * Deploys canvas projects to Vercel or prepares files for download
+ * Deploys canvas projects to HireMindX's own hosting (self-hosted)
+ * Projects are stored in the database and served from /canvas/[id]
+ * Supports both new deploys and redeployments (updates)
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
+import { createClient } from "@libsql/client";
+
+function generateId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+function getClient() {
+  return createClient({
+    url: process.env.TURSO_CONNECTION_URL || "file:./local.db",
+    authToken: process.env.TURSO_AUTH_TOKEN || "fallback_token",
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { code, projectName, action } = await request.json();
+    const headersList = await headers();
+    const session = await auth.api.getSession({ headers: headersList });
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { code, projectName, action, projectId: existingProjectId } = await request.json();
     
     if (!code) {
       return NextResponse.json({ error: "No code provided" }, { status: 400 });
     }
 
-    const name = projectName || `hiremindx-canvas-${Date.now().toString(36)}`;
-
-    // Generate project files
-    const vercelConfig = {
-      version: 2,
-      builds: [{ src: "index.html", use: "@vercel/static" }],
-      routes: [{ src: "/(.*)", dest: "/index.html" }],
-    };
-
-    const packageJson = {
-      name,
-      version: "1.0.0",
-      description: "Created with HireMindX Assist Canvas",
-      scripts: { start: "npx serve ." },
-    };
-
-    const files = {
-      "index.html": code,
-      "vercel.json": JSON.stringify(vercelConfig, null, 2),
-      "package.json": JSON.stringify(packageJson, null, 2),
-    };
+    const name = projectName || `Canvas Project`;
 
     if (action === 'deploy') {
-      // Try direct Vercel deploy using their API
-      // Uses the Vercel Deployments API: POST /v13/deployments
-      const vercelToken = process.env.VERCEL_TOKEN;
-      
-      if (vercelToken) {
-        try {
-          const deployRes = await fetch('https://api.vercel.com/v13/deployments', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${vercelToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              name,
-              files: [
-                { file: 'index.html', data: code },
-                { file: 'vercel.json', data: JSON.stringify(vercelConfig, null, 2) },
-              ],
-              projectSettings: {
-                framework: null,
-              },
-            }),
-          });
+      const now = new Date().toISOString();
+      const client = getClient();
 
-          if (deployRes.ok) {
-            const deployData = await deployRes.json();
-            const deployUrl = `https://${deployData.url}`;
-            return NextResponse.json({
-              success: true,
-              deployUrl,
-              projectName: name,
-              files,
-            });
-          }
-        } catch (e) {
-          console.error('Vercel API deploy failed:', e);
-        }
+      // If existingProjectId is provided, UPDATE the existing project (redeploy)
+      if (existingProjectId) {
+        await client.execute({
+          sql: 'UPDATE canvas_projects SET html_content = ?, title = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+          args: [code, name, now, existingProjectId, session.user.id],
+        });
+
+        const origin = request.headers.get('origin') || request.headers.get('host') || 'hiremindx.com';
+        const protocol = origin.includes('localhost') ? 'http' : 'https';
+        const baseUrl = origin.startsWith('http') ? origin : `${protocol}://${origin}`;
+        const deployUrl = `${baseUrl}/canvas/${existingProjectId}`;
+
+        return NextResponse.json({
+          success: true,
+          deployUrl,
+          projectId: existingProjectId,
+          projectName: name,
+          redeployed: true,
+        });
       }
 
-      // Fallback: return files for manual deploy
+      // New deploy — INSERT
+      const projectId = generateId();
+      await client.execute({
+        sql: 'INSERT INTO canvas_projects (id, user_id, title, html_content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [projectId, session.user.id, name, code, now, now],
+      });
+
+      const origin = request.headers.get('origin') || request.headers.get('host') || 'hiremindx.com';
+      const protocol = origin.includes('localhost') ? 'http' : 'https';
+      const baseUrl = origin.startsWith('http') ? origin : `${protocol}://${origin}`;
+      const deployUrl = `${baseUrl}/canvas/${projectId}`;
+
       return NextResponse.json({
         success: true,
+        deployUrl,
+        projectId,
         projectName: name,
-        files,
-        deployCommand: `npx vercel --yes`,
-        message: 'Add VERCEL_TOKEN to your .env for direct deploy. Code copied to clipboard — paste into a new Vercel project.',
       });
     }
 
@@ -89,10 +91,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       projectName: name,
-      files,
+      files: { "index.html": code },
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Deploy preparation failed";
+    const msg = error instanceof Error ? error.message : "Deploy failed";
+    console.error('Canvas deploy error:', error);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

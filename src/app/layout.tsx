@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { UsageLimitModal } from "@/components/UsageLimitModal";
 import VisualEditsMessenger from "../visual-edits/VisualEditsMessenger";
 import ErrorReporter from "@/components/ErrorReporter";
 import Script from "next/script";
@@ -61,6 +62,7 @@ export default function RootLayout({
           />
           {children}
           <Toaster />
+          <UsageLimitModal />
           <VisualEditsMessenger />
         </Providers>
       </body>

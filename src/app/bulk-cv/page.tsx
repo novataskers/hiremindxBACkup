@@ -136,6 +136,13 @@ export default function BulkCVPage() {
       const res = await fetch("/api/cv-bulk-analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positionId: selectedPosition.id }) });
       const data = await res.json();
       clearInterval(interval); setAnalysisProgress(100);
+      if (!res.ok) {
+        if (res.status === 429 && data?.limitReached) {
+          window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: data.error } }));
+          throw new Error("LIMIT_REACHED_SILENT");
+        }
+        throw new Error(data?.error || "Failed to analyze CVs");
+      }
       if (data.success) {
         toast.success(`Analyzed ${data.analyzed} CV(s) successfully`);
         await fetchPositions();
@@ -144,7 +151,11 @@ export default function BulkCVPage() {
         setShowPostAnalysisModal(true);
       }
       else if (data.message) toast.info(data.message);
-    } catch { clearInterval(interval); toast.error("Failed to analyze CVs"); } finally { setTimeout(() => { setIsAnalyzing(false); setAnalysisProgress(0); }, 500); }
+    } catch (err: any) { 
+      clearInterval(interval); 
+      const isSilent = err instanceof Error && err.message === "LIMIT_REACHED_SILENT";
+      if (!isSilent) toast.error("Failed to analyze CVs"); 
+    } finally { setTimeout(() => { setIsAnalyzing(false); setAnalysisProgress(0); }, 500); }
   };
 
   const handleDeletePosition = async (positionId: number, e: React.MouseEvent) => {
@@ -187,13 +198,20 @@ export default function BulkCVPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to generate questions");
+      if (!res.ok) {
+        if (res.status === 429 && data?.limitReached) {
+          window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: data.error } }));
+          throw new Error("LIMIT_REACHED_SILENT");
+        }
+        throw new Error(data.error || "Failed to generate questions");
+      }
       if (data.data) {
         setGeneratedQuestions(prev => ({ ...prev, [cvId]: data.data }));
         toast.success("Interview questions generated!");
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to generate interview questions");
+      const isSilent = err instanceof Error && err.message === "LIMIT_REACHED_SILENT";
+      if (!isSilent) toast.error(err.message || "Failed to generate interview questions");
     } finally {
       setGeneratingQuestionsFor(null);
     }

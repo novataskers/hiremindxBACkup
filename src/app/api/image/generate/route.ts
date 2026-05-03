@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`Generating image for user ${session.user.id} with prompt: ${prompt}`);
 
-    const imageBlob = await hf.textToImage({
+    const imageResult = await hf.textToImage({
       model: "black-forest-labs/FLUX.1-dev",
       inputs: prompt,
       parameters: {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const arrayBuffer = await imageBlob.arrayBuffer();
+    const arrayBuffer = await new Response(imageResult).arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString("base64");
     const dataUrl = `data:image/png;base64,${base64}`;
 
@@ -44,11 +44,12 @@ export async function POST(request: NextRequest) {
       url: dataUrl,
       success: true,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Hugging Face image generation error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to generate image" },
-      { status: 500 }
-    );
+
+    const message =
+      error instanceof Error ? error.message : "Failed to generate image";
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

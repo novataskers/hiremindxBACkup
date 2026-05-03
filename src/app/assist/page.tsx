@@ -43,6 +43,7 @@ interface Message {
   predictionPrompt?: string;
   isDarkResearch?: boolean;
   darkResearchPrompt?: string;
+  isCanvas?: boolean;
 }
 
 interface UploadedFile {
@@ -213,20 +214,34 @@ function isDeepResearchIntent(text: string): boolean {
 function isCanvasIntent(text: string): boolean {
   const lower = text.toLowerCase();
   return (
-    /\b(create|make|build|design|generate)\b.{0,30}\b(infographic|flashcard|quiz|website|webpage|homepage|landing\s*page|portfolio|game|e-?commerce|dashboard|form|survey|resume|cv\s+template|card|poster|flyer|banner|brochure|menu|certificate|diagram|chart|timeline|bot|api|webhook|app)\b/i.test(lower) ||
-    /\b(infographic|flashcard|quiz|website|webpage|homepage|landing\s*page|game)\b.{0,20}\b(for|about|on|of)\b/i.test(lower) ||
-    /\bmake\s+me\s+(a|an)\s+(simple|basic|cool|interactive)?\s*(game|website|page|app|site|quiz|flashcard|infographic|bot|api)/i.test(lower) ||
-    /\b(html|css|javascript)\s+(page|site|app|code|project)/i.test(lower) ||
-    /\bsimple\s+(game|website|page|app|calculator|clock|timer|counter|todo|bot)/i.test(lower) ||
+    // Direct creation patterns: "create/make/build X"
+    /\b(create|make|build|design|generate|develop|code|write|program)\b.{0,40}\b(infographic|flashcard|quiz|website|webpage|homepage|landing\s*page|portfolio|game|e-?commerce|dashboard|form|survey|resume|cv\s+template|card|poster|flyer|banner|brochure|menu|certificate|diagram|chart|timeline|bot|api|webhook|app|application|page|site|calculator|clock|timer|counter|todo|to-?do|list|tool|widget|component|animation|interface|ui|layout|template|mockup|prototype)/i.test(lower) ||
+    // "X for/about Y" patterns
+    /\b(infographic|flashcard|quiz|website|webpage|homepage|landing\s*page|game|app|page|dashboard)\b.{0,20}\b(for|about|on|of)\b/i.test(lower) ||
+    // "make me a X" pattern
+    /\b(make|build|create|give)\s+(me\s+)?(a|an)\s+\w*\s*(game|website|page|app|site|quiz|flashcard|infographic|bot|api|calculator|clock|timer|counter|todo|dashboard|form|tool|widget|animation|landing|portfolio|template|mockup)/i.test(lower) ||
+    // HTML/CSS/JS explicit patterns
+    /\b(html|css|javascript)\s+(page|site|app|code|project|file)/i.test(lower) ||
+    // "simple X" pattern
+    /\b(simple|basic|cool|interactive|fun|responsive|modern|animated|beautiful|nice|quick|small)\s+(game|website|page|app|calculator|clock|timer|counter|todo|bot|dashboard|form|landing|portfolio)/i.test(lower) ||
+    // Bot/integration patterns
     /\b(whatsapp|discord|telegram|slack)\s*(bot|integration)\b/i.test(lower) ||
-    /\bcreate\s+api\s+for\b/i.test(lower) ||
+    /\bcreate\s+(an?\s+)?api\s+(for|that)\b/i.test(lower) ||
     // Canvas-specific triggers
     /\b(make|write|do|code|build)\s+(this|that|it)\s+in\s+(html|css|javascript|code)/i.test(lower) ||
     /\bopen\s+(the\s+)?canvas\b/i.test(lower) ||
     /\bturn\s+on\s+(the\s+)?canvas\b/i.test(lower) ||
     /\bcanvas\s*(mode|view|page|panel)/i.test(lower) ||
     /\bshow\s+(me\s+)?(a\s+)?(live\s+)?preview/i.test(lower) ||
-    /\bcode\s+(this|that|it)\s+(for|in)\s+(me|html|a\s+page)/i.test(lower)
+    /\bcode\s+(this|that|it)\s+(for|in)\s+(me|html|a\s+page)/i.test(lower) ||
+    // Game-specific patterns: "flappy bird", "snake game", "tic tac toe" etc.
+    /\b(flappy\s*bird|snake|tic\s*tac\s*toe|pong|tetris|breakout|pac\s*man|space\s*invader|minesweeper|2048|wordle|hangman|chess|checkers|sudoku|memory\s*(game|card)|platformer|shooter|rpg|racing\s*game|puzzle\s*game|typing\s*(game|test)|simon\s*(says)?|rock\s*paper\s*scissors)/i.test(lower) ||
+    // "in HTML" or "as a webpage" patterns at end
+    /\b(in|as|using)\s+(html|a\s+webpage?|a\s+website|a\s+page|code|a\s+web\s+app)\s*$/i.test(lower) ||
+    // "convert/turn this into a website/page"
+    /\b(convert|turn|transform)\s+(this|that|it)\s+(into|to)\s+(a\s+)?(website|webpage|page|html|app|web\s*app)/i.test(lower) ||
+    // "I want/need a website/app/game"
+    /\b(i\s+want|i\s+need|i\s+would\s+like|can\s+you\s+(make|create|build)|could\s+you\s+(make|create|build))\s+.{0,20}\b(website|app|game|page|dashboard|form|quiz|infographic|flashcard|bot|landing|portfolio|calculator)/i.test(lower)
   );
 }
 
@@ -526,14 +541,32 @@ export default function AssistPage() {
     if (!files || files.length === 0) return;
     setIsUploading(true);
     const newFiles: UploadedFile[] = [];
-    const allowedTypes = [
-      'application/pdf', 'application/msword',
+    const allowedTypes = new Set([
+      'application/pdf',
+      'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain',
-    ];
+      'image/png',
+      'image/jpeg',
+      'image/gif',
+      'image/webp',
+      'image/svg+xml',
+      'text/plain',
+      'text/html',
+      'text/css',
+      'text/csv',
+      'text/markdown',
+      'application/json',
+      'application/xml',
+      'text/xml',
+      'application/javascript',
+      'text/javascript',
+    ]);
+    const allowedExtensions = ['.txt', '.md', '.markdown', '.html', '.htm', '.css', '.js', '.ts', '.tsx', '.jsx', '.json', '.xml', '.csv', '.pdf', '.doc', '.docx', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (!allowedTypes.includes(file.type)) { toast.error(`File type not supported: ${file.name}`); continue; }
+      const lowerName = file.name.toLowerCase();
+      const isAllowed = allowedTypes.has(file.type) || allowedExtensions.some(ext => lowerName.endsWith(ext));
+      if (!isAllowed) { toast.error(`File type not supported: ${file.name}`); continue; }
       if (file.size > 4.5 * 1024 * 1024) { toast.error(`File too large (max 4.5MB): ${file.name}`); continue; }
       try {
         const base64 = await fileToBase64(file);
@@ -548,7 +581,40 @@ export default function AssistPage() {
   const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = () => {
+      const result = reader.result as string;
+      if (file.type.startsWith('image/') && !file.type.includes('svg')) {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxSize = 1024;
+          if (width > maxSize || height > maxSize) {
+            if (width > height) {
+              height = Math.round((height * maxSize) / width);
+              width = maxSize;
+            } else {
+              width = Math.round((width * maxSize) / height);
+              height = maxSize;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
+          } else {
+            resolve(result);
+          }
+        };
+        img.onerror = () => resolve(result);
+        img.src = result;
+      } else {
+        resolve(result);
+      }
+    };
     reader.onerror = error => reject(error);
   });
 
@@ -584,10 +650,22 @@ export default function AssistPage() {
       await authClient.signIn.social({
         provider: "google",
         callbackURL: "/assist",
-        query: { access_type: "offline", prompt: "consent" }
+        scopes: ["openid", "email", "profile", "https://www.googleapis.com/auth/gmail.send"],
       });
     } catch {
       toast.error("Failed to connect Gmail. Please try again.");
+    }
+  };
+
+  const connectOutlook = async () => {
+    try {
+      await authClient.signIn.social({
+        provider: "microsoft",
+        callbackURL: "/assist",
+        scopes: ["openid", "profile", "email", "offline_access", "https://graph.microsoft.com/Mail.Send"],
+      });
+    } catch {
+      toast.error("Failed to connect Outlook. Please try again.");
     }
   };
 
@@ -619,7 +697,6 @@ export default function AssistPage() {
       const isCanvasFollowUp = canvasOpen && !isOutreachIntent(userMessage) && !isDeepResearchIntent(userMessage) && !isPredictionIntent(userMessage) && !isMarketIntent(userMessage);
       const shouldUseCanvas = isCanvasRequest || isCanvasFollowUp;
       if (shouldUseCanvas) {
-        if (!canvasOpen) setCanvasOpen(true);
         setCanvasStreaming(true);
       }
 
@@ -702,6 +779,7 @@ export default function AssistPage() {
       content: "",
       timestamp: new Date(),
       isStreaming: true,
+      isCanvas: shouldUseCanvas,
     }]);
 
     setInput("");
@@ -757,6 +835,10 @@ export default function AssistPage() {
         if (response.status === 401) throw new Error("Session expired. Please sign in again.");
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          if (response.status === 429 && errorData?.limitReached) {
+            window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: errorData.error } }));
+            throw new Error("LIMIT_REACHED_SILENT");
+          }
           if (response.status === 413) throw new Error('File too large. Please use a smaller file.');
           throw new Error(errorData.error || `Error ${response.status}`);
         }
@@ -770,7 +852,9 @@ export default function AssistPage() {
           if (data.reason === "no_email_token") {
             setHasGmailAccess(false);
             toast.error("Email not connected. Connect Gmail or Outlook to send emails.", {
-              action: { label: "Connect", onClick: connectGmail }
+              action: emailProvider === "microsoft"
+                ? { label: "Connect Outlook", onClick: connectOutlook }
+                : { label: "Connect Gmail", onClick: connectGmail }
             });
           } else if (data.emailsSent) {
             setHasGmailAccess(true);
@@ -834,7 +918,7 @@ export default function AssistPage() {
               }
             }
 
-            if (!accumulatedResponse.trim()) throw new Error("Empty response from AI");
+            if (!accumulatedResponse.trim()) throw new Error("Empty response from AI. The image might be too complex or the API rate limit was reached.");
 
             // Assign documentType to the ASSISTANT message (not user message) so download button appears
             // Also detect if the AI's response itself looks like a document (CV, cover letter, etc.)
@@ -872,15 +956,19 @@ export default function AssistPage() {
       console.error('Error sending message:', error);
       setMessages(prev => prev.filter(m => m.id !== assistantMsgId));
       const isTimeout = error?.name === 'AbortError';
-      setMessages(prev => [...prev, {
-        id: `error-${Date.now()}`,
-        role: "assistant",
-        content: isTimeout
-          ? "The request timed out. Please try again with a shorter message."
-          : (error instanceof Error ? error.message : "Failed to send message. Please try again."),
-        timestamp: new Date(),
-      }]);
-      toast.error(error instanceof Error ? error.message : "Failed to send message.");
+      const isSilent = error instanceof Error && error.message === "LIMIT_REACHED_SILENT";
+      
+      if (!isSilent) {
+        setMessages(prev => [...prev, {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: isTimeout
+            ? "The request timed out. Please try again with a shorter message."
+            : (error instanceof Error ? error.message : "Failed to send message. Please try again."),
+          timestamp: new Date(),
+        }]);
+        toast.error(error instanceof Error ? error.message : "Failed to send message.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -1078,6 +1166,7 @@ export default function AssistPage() {
             const deepResearchPrompt = isDeepResearchMsg ? m.content.replace(/^\[(Deep|Dark) Research\] /, '') : undefined;
             const isAPICreatorMsg = m.role === 'assistant' && m.content?.startsWith('[API Creator] ');
             const apiCreatorPrompt = isAPICreatorMsg ? m.content.replace('[API Creator] ', '') : undefined;
+            const isCanvasMsg = m.role === 'assistant' && m.content && (m.content.includes('```html') || m.content.includes('<!DOCTYPE') || m.content.includes('```javascript') || m.content.includes('```css') || m.content.includes('```jsx') || m.content.includes('```tsx'));
             return {
               id: `loaded-${m.id || index}-${Date.now()}`,
               role: m.role as "user" | "assistant",
@@ -1091,6 +1180,7 @@ export default function AssistPage() {
               darkResearchPrompt: deepResearchPrompt,
               isAPICreator: isAPICreatorMsg || undefined,
               apiCreatorPrompt,
+              isCanvas: isCanvasMsg || undefined,
             };
           });
         const loadedIds = new Set(loadedMessages.map(m => m.id));
@@ -1105,14 +1195,14 @@ export default function AssistPage() {
         setAutoScroll(true);
 
         // Restore canvas if any message was a canvas response (contains HTML code)
-        const canvasMsg = loadedMessages.find(m => m.role === 'assistant' && m.content && (m.content.includes('```html') || m.content.includes('<!DOCTYPE')));
+        const canvasMsg = [...loadedMessages].reverse().find(m => m.isCanvas);
         if (canvasMsg) {
-          setCanvasOpen(true);
           setCanvasCode(canvasMsg.content);
           setCanvasStreaming(false);
         } else {
-          setCanvasOpen(false);
+          setCanvasCode("");
         }
+        setCanvasOpen(false);
       } else {
         toast.error('No messages found in this chat');
       }
@@ -1255,11 +1345,11 @@ export default function AssistPage() {
 
         <div className={`flex-1 flex min-w-0 ${canvasOpen ? '' : ''}`}>
         {/* Chat area — shrinks when canvas is open */}
-        <div className={`flex flex-col min-w-0 transition-all duration-300 ${canvasOpen ? 'w-1/2' : 'flex-1'}`}>
+        <div className={`flex flex-col min-w-0 transition-all duration-300 ${canvasOpen ? 'hidden md:flex md:w-1/2' : 'flex-1'}`}>
           <header className={`h-12 flex items-center px-4 gap-3 flex-shrink-0 border-b ${isDark ? 'bg-black border-zinc-800' : 'bg-white/40 border-black/5 backdrop-blur-md'}`}>
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <Search className="w-5 h-5 text-primary" />
-              <span className="font-semibold">HireMindX Assist</span>
+              <span className="font-semibold">Assist</span>
             </Link>
             <div className="flex-1" />
             {/* Email connection indicator */}
@@ -1450,6 +1540,30 @@ export default function AssistPage() {
                                 </ReactMarkdown>
                               </div>
 
+                              {message.isCanvas && (
+                                <div className={`mt-3 p-4 rounded-xl border ${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-50 border-gray-200'} flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
+                                  <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isDark ? 'bg-primary/20 text-primary' : 'bg-primary/10 text-primary'}`}>
+                                      {message.isStreaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Code className="w-5 h-5" />}
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-semibold">{message.isStreaming ? 'Generating Canvas...' : 'Canvas Ready'}</p>
+                                      <p className="text-xs opacity-70">Click to view preview and source code</p>
+                                    </div>
+                                  </div>
+                                  <Button 
+                                    onClick={() => {
+                                      setCanvasCode(message.content); 
+                                      setCanvasOpen(true);
+                                    }}
+                                    className="gap-2 sm:w-auto w-full"
+                                  >
+                                    <Code className="w-4 h-4" />
+                                    {message.isStreaming ? 'View Progress' : 'Open Canvas'}
+                                  </Button>
+                                </div>
+                              )}
+
                               {/* Sources — Perplexity-style banners, fade in after streaming */}
                               {message.sources && message.sources.length > 0 && !message.isStreaming && (
                                 <div className="mt-4 mb-1 sources-fade-in">
@@ -1609,7 +1723,7 @@ export default function AssistPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.txt"
+                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.md,.markdown,.html,.htm,.css,.js,.ts,.tsx,.jsx,.json,.xml,.csv,text/plain,text/html,text/css,text/csv,text/markdown,application/json,application/xml,text/xml,application/javascript,text/javascript,image/*"
                     multiple
                     onChange={handleFileSelect}
                     className="hidden"
@@ -1620,7 +1734,7 @@ export default function AssistPage() {
                           onClick={() => fileInputRef.current?.click()}
                           disabled={isLoading || isUploading}
                           className="p-3 text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50"
-                          title="Attach file"
+                          title="Attach image, PDF, DOC, TXT, HTML, JSON, code, or other supported file"
                         >
                           {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
                         </button>
@@ -1665,7 +1779,7 @@ export default function AssistPage() {
 
          {/* Canvas panel — slides in from right */}
          {canvasOpen && (
-           <div className="w-1/2 h-full flex-shrink-0">
+           <div className="w-full md:w-1/2 h-full flex-shrink-0 relative z-20 shadow-2xl">
              <AssistCanvas
                code={canvasCode}
                isStreaming={canvasStreaming}

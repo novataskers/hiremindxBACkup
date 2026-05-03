@@ -1,40 +1,56 @@
+import { asc, eq } from 'drizzle-orm';
+
 import { db } from '@/db';
 import { emailCampaigns, leads, user } from '@/db/schema';
 
 async function main() {
     // Get a valid user ID from the database
     const users = await db.select({ id: user.id }).from(user).limit(1);
-    
+
     if (users.length === 0) {
         console.log('⚠️  Warning: No users found in database. Please seed users first.');
         return;
     }
-    
-    const userId = users[0].id;
+
+    const firstUser = users[0];
+
+    if (!firstUser) {
+        console.log('⚠️  Warning: No users found in database. Please seed users first.');
+        return;
+    }
+
+    const userId = firstUser.id;
     console.log(`✅ Found user ID: ${userId}`);
 
     // Get lead IDs from the leads table (first 12 leads)
-    const leadRecords = await db.select({ id: leads.id, companyName: leads.companyName, contactName: leads.contactName, industry: leads.industry })
+    const leadRecords = await db
+        .select({
+            id: leads.id,
+            companyName: leads.companyName,
+            contactName: leads.contactName,
+            industry: leads.industry,
+        })
         .from(leads)
-        .where(leads.userId === userId)
-        .orderBy(leads.id)
+        .where(eq(leads.userId, userId))
+        .orderBy(asc(leads.id))
         .limit(12);
-    
+
     if (leadRecords.length === 0) {
         console.log('⚠️  Warning: No leads found in database. Please seed leads first.');
         return;
     }
-    
+
     console.log(`✅ Found ${leadRecords.length} leads`);
 
     const now = new Date();
-    const getDateDaysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+    const getDateDaysAgo = (days: number) =>
+        new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
 
     const sampleCampaigns = [
         // 2 draft campaigns (not sent yet)
         {
             userId,
-            leadId: leadRecords[0]?.id || 1,
+            leadId: leadRecords[0]?.id,
             subject: `Partnership opportunity with ${leadRecords[0]?.companyName || 'Your Company'}`,
             body: `Hi ${leadRecords[0]?.contactName || 'there'},
 
@@ -44,7 +60,7 @@ I'd love to explore potential collaboration opportunities. Would you be open to 
 
 Best regards,
 John Doe`,
-            status: 'draft',
+            status: 'draft' as const,
             sentAt: null,
             openedAt: null,
             repliedAt: null,
@@ -55,7 +71,7 @@ John Doe`,
         },
         {
             userId,
-            leadId: leadRecords[1]?.id || 2,
+            leadId: leadRecords[1]?.id,
             subject: `Exploring collaboration in ${leadRecords[1]?.industry || 'Technology'}`,
             body: `Hi ${leadRecords[1]?.contactName || 'there'},
 
@@ -65,7 +81,7 @@ Could we schedule a conversation to discuss how we might work together?
 
 Best,
 John Doe`,
-            status: 'draft',
+            status: 'draft' as const,
             sentAt: null,
             openedAt: null,
             repliedAt: null,
@@ -77,7 +93,7 @@ John Doe`,
         // 3 sent campaigns (sent but not opened)
         {
             userId,
-            leadId: leadRecords[2]?.id || 3,
+            leadId: leadRecords[2]?.id,
             subject: 'Introduction: John Doe - Senior Software Engineer',
             body: `Hi ${leadRecords[2]?.contactName || 'there'},
 
@@ -87,7 +103,7 @@ Would you be interested in exploring potential synergies?
 
 Looking forward to hearing from you,
 John Doe`,
-            status: 'sent',
+            status: 'sent' as const,
             sentAt: getDateDaysAgo(14),
             openedAt: null,
             repliedAt: null,
@@ -98,7 +114,7 @@ John Doe`,
         },
         {
             userId,
-            leadId: leadRecords[3]?.id || 4,
+            leadId: leadRecords[3]?.id,
             subject: `Potential synergy between our teams at ${leadRecords[3]?.companyName || 'your company'}`,
             body: `Hello ${leadRecords[3]?.contactName || 'there'},
 
@@ -108,7 +124,7 @@ I'd love to discuss how we might collaborate. Are you available for a quick chat
 
 Best regards,
 John Doe`,
-            status: 'sent',
+            status: 'sent' as const,
             sentAt: getDateDaysAgo(10),
             openedAt: null,
             repliedAt: null,
@@ -119,7 +135,7 @@ John Doe`,
         },
         {
             userId,
-            leadId: leadRecords[4]?.id || 5,
+            leadId: leadRecords[4]?.id,
             subject: `Connect: Experienced developer interested in ${leadRecords[4]?.companyName || 'your company'}`,
             body: `Hi ${leadRecords[4]?.contactName || 'there'},
 
@@ -129,7 +145,7 @@ Would you be open to a conversation about potential opportunities?
 
 Best,
 John Doe`,
-            status: 'sent',
+            status: 'sent' as const,
             sentAt: getDateDaysAgo(8),
             openedAt: null,
             repliedAt: null,
@@ -141,7 +157,7 @@ John Doe`,
         // 3 opened campaigns (sent and opened)
         {
             userId,
-            leadId: leadRecords[5]?.id || 6,
+            leadId: leadRecords[5]?.id,
             subject: `Collaboration opportunity in ${leadRecords[5]?.industry || 'your industry'}`,
             body: `Hello ${leadRecords[5]?.contactName || 'there'},
 
@@ -151,7 +167,7 @@ Would you be interested in exploring how we might work together?
 
 Looking forward to connecting,
 John Doe`,
-            status: 'opened',
+            status: 'opened' as const,
             sentAt: getDateDaysAgo(7),
             openedAt: getDateDaysAgo(5),
             repliedAt: null,
@@ -162,7 +178,7 @@ John Doe`,
         },
         {
             userId,
-            leadId: leadRecords[6]?.id || 7,
+            leadId: leadRecords[6]?.id,
             subject: 'Senior Engineer seeking collaboration opportunities',
             body: `Hi ${leadRecords[6]?.contactName || 'there'},
 
@@ -172,7 +188,7 @@ I'd love to explore potential collaboration. Would next week work for a brief ca
 
 Best regards,
 John Doe`,
-            status: 'opened',
+            status: 'opened' as const,
             sentAt: getDateDaysAgo(6),
             openedAt: getDateDaysAgo(4),
             repliedAt: null,
@@ -183,7 +199,7 @@ John Doe`,
         },
         {
             userId,
-            leadId: leadRecords[7]?.id || 8,
+            leadId: leadRecords[7]?.id,
             subject: `Introduction from a fellow ${leadRecords[7]?.industry || 'industry'} professional`,
             body: `Hello ${leadRecords[7]?.contactName || 'there'},
 
@@ -193,7 +209,7 @@ Would you be open to discussing how we might work together?
 
 Best,
 John Doe`,
-            status: 'opened',
+            status: 'opened' as const,
             sentAt: getDateDaysAgo(5),
             openedAt: getDateDaysAgo(3),
             repliedAt: null,
@@ -205,7 +221,7 @@ John Doe`,
         // 2 replied campaigns (sent, opened, and replied)
         {
             userId,
-            leadId: leadRecords[8]?.id || 9,
+            leadId: leadRecords[8]?.id,
             subject: `Interested in joining ${leadRecords[8]?.companyName || 'your team'}`,
             body: `Hi ${leadRecords[8]?.contactName || 'there'},
 
@@ -215,7 +231,7 @@ I'd love to explore potential collaboration opportunities. Would you be open to 
 
 Best regards,
 John Doe`,
-            status: 'replied',
+            status: 'replied' as const,
             sentAt: getDateDaysAgo(12),
             openedAt: getDateDaysAgo(10),
             repliedAt: getDateDaysAgo(8),
@@ -231,7 +247,7 @@ ${leadRecords[8]?.contactName || 'Contact'}`,
         },
         {
             userId,
-            leadId: leadRecords[9]?.id || 10,
+            leadId: leadRecords[9]?.id,
             subject: `Engineering leadership opportunity at ${leadRecords[9]?.companyName || 'your company'}`,
             body: `Hello ${leadRecords[9]?.contactName || 'there'},
 
@@ -241,7 +257,7 @@ Could we schedule a conversation to discuss potential opportunities?
 
 Looking forward to connecting,
 John Doe`,
-            status: 'replied',
+            status: 'replied' as const,
             sentAt: getDateDaysAgo(9),
             openedAt: getDateDaysAgo(7),
             repliedAt: getDateDaysAgo(5),
@@ -258,7 +274,7 @@ ${leadRecords[9]?.contactName || 'Contact'}`,
         // 1 delivered campaign (sent and delivered)
         {
             userId,
-            leadId: leadRecords[10]?.id || 11,
+            leadId: leadRecords[10]?.id,
             subject: `Technical collaboration with ${leadRecords[10]?.companyName || 'your team'}`,
             body: `Hi ${leadRecords[10]?.contactName || 'there'},
 
@@ -268,7 +284,7 @@ Would you be interested in discussing potential collaboration?
 
 Best regards,
 John Doe`,
-            status: 'delivered',
+            status: 'delivered' as const,
             sentAt: getDateDaysAgo(4),
             openedAt: null,
             repliedAt: null,
@@ -280,7 +296,7 @@ John Doe`,
         // 1 bounced campaign (failed to deliver)
         {
             userId,
-            leadId: leadRecords[11]?.id || 12,
+            leadId: leadRecords[11]?.id,
             subject: `Partnership inquiry for ${leadRecords[11]?.companyName || 'your company'}`,
             body: `Hello ${leadRecords[11]?.contactName || 'there'},
 
@@ -290,7 +306,7 @@ I'd love to explore how we might work together. Are you available for a brief ca
 
 Best,
 John Doe`,
-            status: 'bounced',
+            status: 'bounced' as const,
             sentAt: getDateDaysAgo(3),
             openedAt: null,
             repliedAt: null,
@@ -299,17 +315,20 @@ John Doe`,
             createdAt: getDateDaysAgo(3),
             updatedAt: getDateDaysAgo(3),
         },
-    ];
+    ].filter(
+        (campaign): campaign is typeof campaign & { leadId: number } =>
+            campaign.leadId !== undefined
+    );
 
-    await db.insert(emailCampaigns).values(sampleCampaigns);
-    
+    await db.insert(emailCampaigns).values(sampleCampaigns as any);
+
     console.log('✅ Email campaigns seeder completed successfully');
-    console.log(`   - 2 draft campaigns`);
-    console.log(`   - 3 sent campaigns`);
-    console.log(`   - 3 opened campaigns`);
-    console.log(`   - 2 replied campaigns`);
-    console.log(`   - 1 delivered campaign`);
-    console.log(`   - 1 bounced campaign`);
+    console.log('   - 2 draft campaigns');
+    console.log('   - 3 sent campaigns');
+    console.log('   - 3 opened campaigns');
+    console.log('   - 2 replied campaigns');
+    console.log('   - 1 delivered campaign');
+    console.log('   - 1 bounced campaign');
 }
 
 main().catch((error) => {

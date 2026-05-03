@@ -8,7 +8,7 @@ const VALID_STATUSES = ['pending', 'applied', 'interview', 'accepted', 'rejected
 
 export async function PUT(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     // Get session from Authorization header
@@ -22,7 +22,7 @@ export async function PUT(
     }
 
     const userId = session.user.id;
-    const { id } = context.params;
+    const { id } = await context.params;
 
     // Validate ID
     if (!id || isNaN(parseInt(id))) {

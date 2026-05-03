@@ -47,13 +47,15 @@ async function extractTextFromPDF(base64Data: string): Promise<string> {
     // Import pdf-parse's internal parser directly to avoid test file loading bug
     const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
     
-    const data = await pdfParse(buffer);
+    const data: any = await pdfParse(buffer);
+    const extractedText = typeof data?.text === "string" ? data.text : "";
+    const pageCount = typeof data?.numpages === "number" ? data.numpages : 0;
     
-    console.log("PDF parsed, pages:", data.numpages);
-    console.log("Extracted text length:", data.text.length);
-    console.log("First 200 chars:", data.text.substring(0, 200));
+    console.log("PDF parsed, pages:", pageCount);
+    console.log("Extracted text length:", extractedText.length);
+    console.log("First 200 chars:", extractedText.substring(0, 200));
     
-    return data.text;
+    return extractedText;
   } catch (error) {
     console.error("Error extracting PDF text:", error);
     return "";
@@ -179,6 +181,17 @@ export async function POST(request: NextRequest) {
     const userId = await getUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Check usage limits
+    const { useFeature } = await import("@/lib/usage-limits");
+    const usageResult = await useFeature(userId, "bulk_cv_analysis");
+    if (!usageResult.allowed) {
+      return NextResponse.json({
+        error: usageResult.upgradeMessage,
+        limitReached: true,
+        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+      }, { status: 429 });
     }
 
     const body = await request.json();

@@ -6,7 +6,7 @@ import { auth } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     // Authentication check
@@ -19,7 +19,7 @@ export async function GET(
     }
 
     // Extract and validate ID
-    const { id } = context.params;
+    const { id } = await context.params;
     if (!id || isNaN(parseInt(id))) {
       return NextResponse.json(
         { error: 'Valid ID is required', code: 'INVALID_ID' },
@@ -70,7 +70,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     // Authentication check
@@ -83,7 +83,7 @@ export async function PUT(
     }
 
     const userId = session.user.id;
-    const { id } = context.params;
+    const { id } = await context.params;
 
     // Validate ID
     if (!id || isNaN(parseInt(id))) {
@@ -225,7 +225,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     // Authentication check
@@ -238,7 +238,7 @@ export async function DELETE(
     }
 
     const userId = session.user.id;
-    const { id } = context.params;
+    const { id } = await context.params;
 
     // Validate ID
     if (!id || isNaN(parseInt(id))) {

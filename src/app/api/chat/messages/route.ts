@@ -49,7 +49,24 @@ export async function GET(request: NextRequest) {
       .where(eq(communityMessages.conversationId, parseInt(conversationId)))
       .orderBy(communityMessages.createdAt);
 
-    return NextResponse.json(messages);
+    // Transform messages to include attachments as array for frontend compatibility
+    const transformedMessages = messages.map(msg => {
+      const transformed: any = {
+        id: msg.id,
+        text: msg.text,
+        senderId: msg.senderId,
+        senderName: msg.senderName,
+        createdAt: msg.createdAt,
+        status: msg.status,
+        attachments: msg.attachmentUrl ? [{
+          url: msg.attachmentUrl,
+          type: msg.attachmentType,
+        }] : [],
+      };
+      return transformed;
+    });
+
+    return NextResponse.json(transformedMessages);
   } catch (error) {
     console.error('Error fetching messages:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

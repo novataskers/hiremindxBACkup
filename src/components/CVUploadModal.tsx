@@ -106,6 +106,10 @@ export default function CVUploadModal({ open, onOpenChange }: CVUploadModalProps
 
       if (!analysisResponse.ok) {
         const error = await analysisResponse.json();
+        if (analysisResponse.status === 429 && error?.limitReached) {
+          window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: error.error } }));
+          throw new Error("LIMIT_REACHED_SILENT");
+        }
         throw new Error(error.error || "Failed to analyze CV");
       }
 
@@ -144,7 +148,10 @@ export default function CVUploadModal({ open, onOpenChange }: CVUploadModalProps
 
     } catch (error) {
       console.error("Error processing CV:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to process CV");
+      const isSilent = error instanceof Error && error.message === "LIMIT_REACHED_SILENT";
+      if (!isSilent) {
+        toast.error(error instanceof Error ? error.message : "Failed to process CV");
+      }
       setUploadStep("upload");
       setProgress(0);
     }

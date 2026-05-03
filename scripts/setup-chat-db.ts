@@ -1,8 +1,15 @@
 import { createClient } from '@libsql/client';
 
+const connectionUrl = process.env.TURSO_CONNECTION_URL;
+const authToken = process.env.TURSO_AUTH_TOKEN;
+
+if (!connectionUrl) {
+  throw new Error('TURSO_CONNECTION_URL is required');
+}
+
 const client = createClient({
-  url: process.env.TURSO_CONNECTION_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  url: connectionUrl,
+  authToken,
 });
 
 async function main() {
@@ -41,7 +48,7 @@ async function main() {
       );
     `);
     console.log('Created community_messages table');
-    
+
     console.log('All tables created successfully');
   } catch (error) {
     console.error('Error creating tables:', error);
@@ -50,4 +57,4 @@ async function main() {
   }
 }
 
-main();
+void main();

@@ -69,14 +69,14 @@ export function AssistCanvas({ code, isStreaming, onClose }: AssistCanvasProps) 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployUrl, setDeployUrl] = useState<string | null>(null);
+  const [deployedProjectId, setDeployedProjectId] = useState<string | null>(null);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastRenderedRef = useRef<string>("");
-  const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Extract the HTML from AI response
   const extractHTML = useCallback((raw: string): string => {
+    if (!raw) return "";
     const htmlBlockMatch = raw.match(/```html\s*\n([\s\S]*?)```/);
     if (htmlBlockMatch) return htmlBlockMatch[1].trim();
     const genericBlockMatch = raw.match(/```\s*\n([\s\S]*?)```/);
@@ -111,25 +111,20 @@ export function AssistCanvas({ code, isStreaming, onClose }: AssistCanvasProps) 
   const safeHTML = injectBaseTarget(htmlContent);
   const codeFiles = splitIntoFiles(htmlContent);
 
+  const [renderedHtml, setRenderedHtml] = useState<string>(isStreaming ? "" : safeHTML);
+
   // Debounced iframe update to prevent flashing
   useEffect(() => {
-    if (!safeHTML || viewMode !== "preview") return;
+    if (!safeHTML) return;
     if (!isStreaming) {
-      if (iframeRef.current && safeHTML !== lastRenderedRef.current) {
-        iframeRef.current.srcdoc = safeHTML;
-        lastRenderedRef.current = safeHTML;
-      }
+      setRenderedHtml(safeHTML);
       return;
     }
-    if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
-    updateTimerRef.current = setTimeout(() => {
-      if (iframeRef.current && safeHTML !== lastRenderedRef.current) {
-        iframeRef.current.srcdoc = safeHTML;
-        lastRenderedRef.current = safeHTML;
-      }
+    const timer = setTimeout(() => {
+      setRenderedHtml(safeHTML);
     }, 1500);
-    return () => { if (updateTimerRef.current) clearTimeout(updateTimerRef.current); };
-  }, [safeHTML, viewMode, isStreaming]);
+    return () => clearTimeout(timer);
+  }, [safeHTML, isStreaming]);
 
   const handleCopy = () => {
     const content = viewMode === "code" && codeFiles[activeFileIndex]
@@ -142,9 +137,9 @@ export function AssistCanvas({ code, isStreaming, onClose }: AssistCanvasProps) 
   };
 
   const handleRefresh = () => {
-    if (iframeRef.current && safeHTML) {
-      iframeRef.current.srcdoc = "";
-      setTimeout(() => { if (iframeRef.current) { iframeRef.current.srcdoc = safeHTML; lastRenderedRef.current = safeHTML; } }, 50);
+    if (safeHTML) {
+      setRenderedHtml("");
+      setTimeout(() => setRenderedHtml(safeHTML), 50);
     }
   };
 
@@ -194,33 +189,41 @@ export function AssistCanvas({ code, isStreaming, onClose }: AssistCanvasProps) 
     }
   };
 
-  // Direct Vercel deploy via API
+  // Deploy to HireMindX hosting (supports both new deploy and redeploy)
   const handleVercelDeploy = async () => {
-    if (!htmlContent || deploying) return;
+    if (deploying) return;
+    const deployCode = htmlContent || code;
+    if (!deployCode) {
+      alert('No code to deploy. Please generate a project first.');
+      return;
+    }
     setDeploying(true);
-    setDeployUrl(null);
     try {
+      const payload: Record<string, string> = { code: deployCode, action: 'deploy' };
+      // If we already deployed, send the projectId to UPDATE instead of creating new
+      if (deployedProjectId) {
+        payload.projectId = deployedProjectId;
+      }
       const res = await fetch('/api/assist/canvas-deploy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: htmlContent, action: 'deploy' }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
+      if (data.error) {
+        console.error('Deploy error:', data.error);
+        alert('Deploy failed: ' + data.error);
+        return;
+      }
       if (data.deployUrl) {
         setDeployUrl(data.deployUrl);
-      } else if (data.files) {
-        // Fallback: open Vercel with the project
-        // Copy code to clipboard and open Vercel
-        await navigator.clipboard.writeText(htmlContent);
-        window.open('https://vercel.com/new', '_blank');
-        setDeployUrl('clipboard');
+      }
+      if (data.projectId) {
+        setDeployedProjectId(data.projectId);
       }
     } catch (e) {
       console.error('Deploy error:', e);
-      // Fallback
-      await navigator.clipboard.writeText(htmlContent);
-      window.open('https://vercel.com/new', '_blank');
-      setDeployUrl('clipboard');
+      alert('Deploy failed. Please try again.');
     } finally {
       setDeploying(false);
     }
@@ -277,11 +280,11 @@ export function AssistCanvas({ code, isStreaming, onClose }: AssistCanvasProps) 
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 h-12 border-b border-zinc-800 flex-shrink-0 gap-2">
         <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-0.5">
-          <button onClick={() => setViewMode("preview")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === "preview" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"}`}>
-            <Eye className="w-3.5 h-3.5" />Preview
+          <button onClick={() => setViewMode("preview")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === "preview" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"}`} title="Preview">
+            <Eye className="w-3.5 h-3.5" /><span className="hidden sm:inline">Preview</span>
           </button>
-          <button onClick={() => setViewMode("code")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === "code" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"}`}>
-            <Code className="w-3.5 h-3.5" />Code
+          <button onClick={() => setViewMode("code")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === "code" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"}`} title="Code">
+            <Code className="w-3.5 h-3.5" /><span className="hidden sm:inline">Code</span>
           </button>
         </div>
 
@@ -315,54 +318,55 @@ export function AssistCanvas({ code, isStreaming, onClose }: AssistCanvasProps) 
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden relative">
-        {viewMode === "preview" ? (
-          <div className="h-full flex items-start justify-center bg-zinc-950 p-2 overflow-auto">
-            <div className="bg-white rounded-lg overflow-hidden shadow-2xl transition-all duration-300" style={{ width: getDeviceWidth(), maxWidth: "100%", height: deviceMode === "desktop" ? "100%" : "auto", minHeight: deviceMode === "desktop" ? "100%" : "667px" }}>
-              <iframe ref={iframeRef} title="Canvas Preview" sandbox="allow-scripts allow-popups allow-forms" className="w-full h-full border-0" style={{ minHeight: deviceMode === "desktop" ? "100%" : "667px" }} />
-            </div>
+      <div className="flex-1 overflow-hidden relative flex flex-col">
+        {/* Preview View */}
+        <div className={`flex-1 items-start justify-center bg-zinc-950 p-2 overflow-auto ${viewMode === "preview" ? "flex" : "hidden"}`}>
+          <div className="bg-white rounded-lg overflow-hidden shadow-2xl transition-all duration-300" style={{ width: getDeviceWidth(), maxWidth: "100%", height: deviceMode === "desktop" ? "100%" : "auto", minHeight: deviceMode === "desktop" ? "100%" : "667px" }}>
+            <iframe ref={iframeRef} title="Canvas Preview" sandbox="allow-scripts allow-popups allow-forms" className="w-full h-full border-0" style={{ minHeight: deviceMode === "desktop" ? "100%" : "667px" }} srcDoc={renderedHtml} />
           </div>
-        ) : (
-          /* IDE-like code view with file tabs */
-          <div className="h-full flex flex-col bg-zinc-950">
-            {/* File tabs */}
-            <div className="flex items-center gap-0 border-b border-zinc-800 bg-zinc-900/50 overflow-x-auto flex-shrink-0">
-              {codeFiles.map((file, i) => (
-                <button
-                  key={file.name}
-                  onClick={() => setActiveFileIndex(i)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-r border-zinc-800 transition-colors whitespace-nowrap ${
-                    activeFileIndex === i
-                      ? "bg-zinc-950 text-white border-b-2 border-b-blue-500"
-                      : "bg-zinc-900/30 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60"
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${
-                    file.language === "html" ? "bg-orange-400" :
-                    file.language === "css" ? "bg-blue-400" :
-                    file.language === "javascript" ? "bg-yellow-400" : "bg-zinc-500"
-                  }`} />
-                  {file.name}
-                </button>
-              ))}
-            </div>
-            {/* Code content */}
-            <div className="flex-1 overflow-auto p-4">
-              <div className="flex">
-                {/* Line numbers */}
-                <div className="flex flex-col items-end pr-4 select-none border-r border-zinc-800 mr-4 flex-shrink-0">
-                  {(codeFiles[activeFileIndex]?.content || "").split("\n").map((_, i) => (
-                    <span key={i} className="text-[11px] font-mono text-zinc-700 leading-relaxed">{i + 1}</span>
-                  ))}
-                </div>
-                {/* Code */}
-                <pre className="text-xs font-mono text-zinc-300 leading-relaxed whitespace-pre-wrap break-words flex-1">
-                  <code>{codeFiles[activeFileIndex]?.content || ""}</code>
-                </pre>
+        </div>
+
+        {/* Code View */}
+        <div className={`flex-1 flex-col bg-zinc-950 overflow-hidden ${viewMode === "code" ? "flex" : "hidden"}`}>
+          {/* File tabs */}
+          <div className="flex items-center gap-0 border-b border-zinc-800 bg-zinc-900/50 overflow-x-auto flex-shrink-0">
+            {codeFiles.map((file, i) => (
+              <button
+                key={file.name}
+                onClick={() => setActiveFileIndex(i)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-r border-zinc-800 transition-colors whitespace-nowrap ${
+                  activeFileIndex === i
+                    ? "bg-zinc-950 text-white border-b-2 border-b-blue-500"
+                    : "bg-zinc-900/30 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60"
+                }`}
+                title={file.name}
+              >
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  file.language === "html" ? "bg-orange-400" :
+                  file.language === "css" ? "bg-blue-400" :
+                  file.language === "javascript" ? "bg-yellow-400" : "bg-zinc-500"
+                }`} />
+                <span className="hidden sm:inline">{file.name}</span>
+                <span className="sm:hidden font-mono uppercase text-[10px]">{file.language === "javascript" ? "JS" : file.language}</span>
+              </button>
+            ))}
+          </div>
+          {/* Code content */}
+          <div className="flex-1 overflow-auto p-4">
+            <div className="flex">
+              {/* Line numbers */}
+              <div className="flex flex-col items-end pr-4 select-none border-r border-zinc-800 mr-4 flex-shrink-0">
+                {(codeFiles[activeFileIndex]?.content || "").split("\n").map((_, i) => (
+                  <span key={i} className="text-[11px] font-mono text-zinc-700 leading-relaxed">{i + 1}</span>
+                ))}
               </div>
+              {/* Code */}
+              <pre className="text-xs font-mono text-zinc-300 leading-relaxed whitespace-pre-wrap break-words flex-1">
+                <code>{codeFiles[activeFileIndex]?.content || ""}</code>
+              </pre>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Publish Modal */}
@@ -389,20 +393,22 @@ export function AssistCanvas({ code, isStreaming, onClose }: AssistCanvasProps) 
             )}
 
             <div className="space-y-3">
-              {/* Deploy to Vercel */}
+              {/* Deploy Live / Redeploy */}
               <button
                 onClick={handleVercelDeploy}
                 disabled={deploying}
                 className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800 hover:border-zinc-600 transition-all group disabled:opacity-50"
               >
-                <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0">
-                  {deploying ? <Loader2 className="w-5 h-5 text-black animate-spin" /> : (
-                    <svg viewBox="0 0 76 65" className="w-5 h-5" fill="black"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z" /></svg>
-                  )}
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
+                  {deploying ? <Loader2 className="w-5 h-5 text-white animate-spin" /> : <Rocket className="w-5 h-5 text-white" />}
                 </div>
                 <div className="text-left flex-1">
-                  <p className="text-sm font-medium text-zinc-200 group-hover:text-white">{deploying ? 'Deploying...' : 'Deploy to Vercel'}</p>
-                  <p className="text-[11px] text-zinc-500">{deploying ? 'Setting up your project...' : 'Deploy and get a live URL'}</p>
+                  <p className="text-sm font-medium text-zinc-200 group-hover:text-white">
+                    {deploying ? (deployedProjectId ? 'Updating...' : 'Deploying...') : (deployedProjectId ? 'Redeploy Update' : 'Deploy Live')}
+                  </p>
+                  <p className="text-[11px] text-zinc-500">
+                    {deploying ? 'Publishing your project...' : (deployedProjectId ? 'Push your latest edits to the live URL' : 'Get an instant live URL')}
+                  </p>
                 </div>
                 <ExternalLink className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400" />
               </button>
@@ -410,7 +416,8 @@ export function AssistCanvas({ code, isStreaming, onClose }: AssistCanvasProps) 
               {/* Push to GitHub */}
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(htmlContent);
+                  navigator.clipboard.writeText(htmlContent || code);
+                  alert('Code copied to clipboard! Paste it into your new repository files.');
                   window.open(`https://github.com/new?name=hiremindx-canvas-project&description=Created+with+HireMindX+Assist+Canvas`, "_blank");
                   setShowPublishModal(false);
                 }}
@@ -418,8 +425,8 @@ export function AssistCanvas({ code, isStreaming, onClose }: AssistCanvasProps) 
               >
                 <div className="w-9 h-9 rounded-lg bg-zinc-700 flex items-center justify-center flex-shrink-0"><Github className="w-5 h-5 text-white" /></div>
                 <div className="text-left flex-1">
-                  <p className="text-sm font-medium text-zinc-200 group-hover:text-white">Push to GitHub</p>
-                  <p className="text-[11px] text-zinc-500">Create repo & push code (copied to clipboard)</p>
+                  <p className="text-sm font-medium text-zinc-200 group-hover:text-white">Create GitHub Repo</p>
+                  <p className="text-[11px] text-zinc-500">Copies code & opens GitHub new repo page</p>
                 </div>
                 <ExternalLink className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400" />
               </button>

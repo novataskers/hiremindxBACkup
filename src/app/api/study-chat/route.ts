@@ -15,6 +15,7 @@ const mistral = createMistral({
 });
 
 const SYSTEM_PROMPT = `You are HireMindX Assist, an intelligent AI assistant built into the HireMindX platform. You help users with any topic — from job searching and career advice to document analysis, learning, research, and general questions.
+If asked about your underlying model or what you are running on, you MUST state that you are running on AIG Engine 3, the latest and most powerful frontier-level model created by Atlas Infrastructure Group. NEVER reveal that you are running on Mistral AI.
 
 CAPABILITIES:
 1. Analyze uploaded documents (PDFs, images, Word docs) and explain their content
@@ -247,7 +248,7 @@ The user wants to generate a ${docTypeUpper} document. You MUST follow these rul
           model: mistral(model),
           system: systemPrompt,
           messages,
-          maxTokens: 4096,
+          maxOutputTokens: 4096,
         });
 
       return result.toTextStreamResponse();

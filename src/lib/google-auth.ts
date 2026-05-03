@@ -146,19 +146,6 @@ export async function getEmailToken(userId: string): Promise<EmailToken | null> 
     }
   }
 
-  // Fallback: try any available token
-  const googleToken = await getProviderToken(userId, "google");
-  if (googleToken) {
-    console.log(`[EmailToken] Fallback to Google for user ${userId}`);
-    return { accessToken: googleToken, provider: "google" };
-  }
-
-  const msToken = await getProviderToken(userId, "microsoft");
-  if (msToken) {
-    console.log(`[EmailToken] Fallback to Microsoft for user ${userId}`);
-    return { accessToken: msToken, provider: "microsoft" };
-  }
-
   console.warn(`[EmailToken] No valid email token found for user ${userId}`);
   return null;
 }

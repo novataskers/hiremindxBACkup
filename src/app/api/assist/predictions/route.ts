@@ -11,6 +11,7 @@ import { db } from "@/db";
 import { researchSessions, predictions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { searchWithSerper } from "@/lib/search-utils";
+import { useFeature } from "@/lib/usage-limits";
 
 export const maxDuration = 60;
 
@@ -103,6 +104,16 @@ export async function POST(request: NextRequest) {
     const { prompt } = await request.json();
     if (!prompt) {
       return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+    }
+
+    // Check usage limits
+    const usageResult = await useFeature(userId, "ai_prediction");
+    if (!usageResult.allowed) {
+      return NextResponse.json({
+        error: usageResult.upgradeMessage,
+        limitReached: true,
+        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+      }, { status: 429 });
     }
 
     // 1. Load user's research history (last 50 sessions)

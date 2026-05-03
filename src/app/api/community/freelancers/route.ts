@@ -32,9 +32,21 @@ export async function GET(request: NextRequest) {
           .where(eq(freelancerPortfolio.userId, profile.userId))
           .all();
 
+        let parsedSkills: any = null;
+        try {
+          if (typeof profile.skills === "string" && profile.skills) {
+            parsedSkills = JSON.parse(profile.skills);
+          } else if (Array.isArray(profile.skills)) {
+            parsedSkills = profile.skills;
+          }
+        } catch (e) {
+          console.error(`Error parsing skills for user ${profile.userId}:`, e);
+          parsedSkills = [];
+        }
+
         return {
           ...profile,
-          skills: typeof profile.skills === "string" ? JSON.parse(profile.skills) : profile.skills,
+          skills: parsedSkills || [],
           portfolio: portfolio.slice(0, 3), // Only first 3 items for preview
         };
       })

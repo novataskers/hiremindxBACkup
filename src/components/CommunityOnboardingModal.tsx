@@ -610,7 +610,7 @@ export function CommunityOnboardingModal({
                     >
                       <X className="w-4 h-4" />
                     </button>
-                    <div className="flex gap-4">
+                    <div className="flex gap-4 pr-8">
                       {item.imageUrl && (
                         <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
                           <img
@@ -621,7 +621,7 @@ export function CommunityOnboardingModal({
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <h4 className={`font-semibold truncate ${isDark ? "text-white" : "text-zinc-900"}`}>
+                        <h4 className={`font-semibold break-words pr-2 ${isDark ? "text-white" : "text-zinc-900"}`}>
                           {item.title}
                         </h4>
                         <span
@@ -637,10 +637,12 @@ export function CommunityOnboardingModal({
                           </p>
                         )}
                         {item.linkUrl && (
-                          <p className="text-xs text-blue-500 mt-1 truncate flex items-center gap-1">
-                            <LinkIcon className="w-3 h-3" />
-                            {item.linkUrl}
-                          </p>
+                          <div className="text-xs text-blue-500 mt-1 flex items-start gap-1 min-w-0">
+                            <LinkIcon className="w-3 h-3 mt-0.5 shrink-0" />
+                            <span className="break-all">
+                              {item.linkUrl}
+                            </span>
+                          </div>
                         )}
                       </div>
                     </div>

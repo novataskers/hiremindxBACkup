@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { createMistral } from "@ai-sdk/mistral";
 import { streamText } from "ai";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
+import { useFeature } from "@/lib/usage-limits";
 
 const mistral = createMistral({ apiKey: process.env.MISTRAL_API_KEY! });
 
@@ -290,6 +293,23 @@ function computeTechnicalContext(prices: PriceData[]): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Auth check
+  const headersList = await headers();
+  const session = await auth.api.getSession({ headers: headersList });
+  if (!session?.user?.id) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+  }
+
+  // Usage limit check
+  const usageResult = await useFeature(session.user.id, "market_analysis");
+  if (!usageResult.allowed) {
+    return new Response(JSON.stringify({
+      error: usageResult.upgradeMessage,
+      limitReached: true,
+      usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+    }), { status: 429, headers: { "Content-Type": "application/json" } });
+  }
+
   const { prompt, conversationHistory = [] } = await req.json();
 
   const encoder = new TextEncoder();
@@ -444,7 +464,7 @@ User question: ${prompt}`;
               ...conversationHistory.slice(-4).map((m: any) => ({ role: m.role as "user" | "assistant", content: m.content })),
               { role: "user", content: prompt },
             ],
-            maxTokens: 2500,
+            maxOutputTokens: 2500,
             temperature: 0.2,
           });
 

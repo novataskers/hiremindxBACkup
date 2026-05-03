@@ -37,7 +37,20 @@ export async function GET(request: NextRequest) {
           .from(communityProfiles)
           .where(eq(communityProfiles.userId, offer.userId))
           .get();
-        return { ...offer, tags: typeof offer.tags === "string" ? JSON.parse(offer.tags) : offer.tags, profile };
+        
+        let parsedTags: any = null;
+        try {
+          if (typeof offer.tags === "string" && offer.tags) {
+            parsedTags = JSON.parse(offer.tags);
+          } else if (Array.isArray(offer.tags)) {
+            parsedTags = offer.tags;
+          }
+        } catch (e) {
+          console.error(`Error parsing tags for offer ${offer.id}:`, e);
+          parsedTags = [];
+        }
+
+        return { ...offer, tags: parsedTags || [], profile };
       })
     );
 

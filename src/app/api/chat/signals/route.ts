@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       conversationId: communityMessages.conversationId,
       text: communityMessages.text,
       senderId: communityMessages.senderId,
-      senderName: communityMessages.senderName,
+      senderName: sql<string>`''`.as('senderName'),
       attachmentType: communityMessages.attachmentType,
       createdAt: communityMessages.createdAt,
     })
