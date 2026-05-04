@@ -36,8 +36,10 @@ const FEATURE_CONFIG: Record<string, FeatureConfig> = {
 
   // ── Premium-only community features — limit 0, always blocked for free ──
   community_messaging: { limit: 0, isLifetime: true, tsKey: null as any },
-  community_post:     { limit: 0, isLifetime: true, tsKey: null as any },
   community_contract: { limit: 0, isLifetime: true, tsKey: null as any },
+
+  // ── Community job post — limit 1 for free users ──
+  community_post:     { limit: 1, isLifetime: true, tsKey: 'communityPostCount' },
 
   // ── 24h reset features ──
   file_uploads:   { limit: 3,  isLifetime: false, tsKey: 'attachmentCount',   resetTsKey: 'attachmentResetAt' },
@@ -303,6 +305,7 @@ export async function getUsageSummary(userId: string) {
         examQuestions: getFeatureData('exam_questions', 0, null),
         match: getFeatureData('bulk_cv_analysis', 0, null),
         communityAi: getFeatureData('community_ai_agent', 0, null),
+        communityPost: getFeatureData('community_post', 0, null),
         attachment: getFeatureData('file_uploads', 0, null),
         chat: getFeatureData('chat_messages', 0, null),
       };
@@ -318,6 +321,7 @@ export async function getUsageSummary(userId: string) {
       examQuestions: getFeatureData('exam_questions', usageRow.examQuestionsCount, null),
       match: getFeatureData('bulk_cv_analysis', usageRow.matchCount, null),
       communityAi: getFeatureData('community_ai_agent', usageRow.communityAiCount, null),
+      communityPost: getFeatureData('community_post', usageRow.communityPostCount, null),
       attachment: getFeatureData('file_uploads', usageRow.attachmentCount, usageRow.attachmentResetAt),
       chat: getFeatureData('chat_messages', usageRow.chatMessageCount, usageRow.chatMessageResetAt),
     };

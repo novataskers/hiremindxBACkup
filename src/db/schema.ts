@@ -485,6 +485,8 @@ export const userUsageLimits = sqliteTable('user_usage_limits', {
   matchCount: integer('match_count').notNull().default(0),
   // Community AI Agent — limit 1
   communityAiCount: integer('community_ai_count').notNull().default(0),
+  // Community Job Post — limit 1
+  communityPostCount: integer('community_post_count').notNull().default(0),
 
   // ── 24h reset limits ──
   // Attachments in Assist — limit 3/day
