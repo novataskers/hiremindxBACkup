@@ -302,9 +302,11 @@ export async function POST(request: NextRequest) {
 
     // ── Check Usage Limits ──────────────────────────────────────────────────
     const totalAttachments = (bodyAttachments?.length || 0) + (file ? 1 : 0);
+    console.log(`[DEBUG assist/chat] userId=${userId} totalAttachments=${totalAttachments} bodyAttachments=${bodyAttachments?.length || 0} file=${file ? 1 : 0}`);
     if (totalAttachments > 0) {
       // Check and increment attachment quota in one call (1 attachment = 1 use)
       const usageResult = await useFeature(userId, "file_uploads", totalAttachments);
+      console.log(`[DEBUG assist/chat] file_uploads result: allowed=${usageResult.allowed} used=${usageResult.currentUsage} limit=${usageResult.limit} remaining=${usageResult.remaining}`);
       if (!usageResult.allowed) {
         return NextResponse.json({
           error: usageResult.upgradeMessage,

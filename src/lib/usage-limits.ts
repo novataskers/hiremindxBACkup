@@ -195,6 +195,7 @@ export async function useFeature(userId: string, feature: string, increment: num
 
     // If increment is 0, just check the limit without updating the DB
     if (increment === 0) {
+      console.log(`[DEBUG useFeature] check-only mode: feature=${feature} userId=${userId} effectiveCount=${effectiveCount} limit=${limit} remaining=${remaining}`);
       return {
         allowed: true,
         upgradeMessage: "",
@@ -219,6 +220,7 @@ export async function useFeature(userId: string, feature: string, increment: num
     // Build and execute the update with proper Drizzle column references
     const updateData = buildUpdate(tsKey as string, newCount, resetTsKey as string | undefined, newResetAtStr, now.toISOString());
 
+    console.log(`[DEBUG useFeature] UPDATING DB: feature=${feature} userId=${userId} tsKey=${tsKey} newCount=${newCount}`);
     await db
       .update(userUsageLimits)
       .set(updateData as any)
