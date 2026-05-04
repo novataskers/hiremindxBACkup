@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         error: usageResult.upgradeMessage,
         limitReached: true,
-        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan, resetAt: usageResult.resetAt, isLifetime: usageResult.isLifetime },
       }, { status: 429 });
     }
 

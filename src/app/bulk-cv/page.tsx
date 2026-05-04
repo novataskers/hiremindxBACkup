@@ -138,7 +138,8 @@ export default function BulkCVPage() {
       clearInterval(interval); setAnalysisProgress(100);
       if (!res.ok) {
         if (res.status === 429 && data?.limitReached) {
-          window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: data.error } }));
+          const usage = data.usage || {};
+          window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: data.error, resetAt: usage.resetAt || null, isLifetime: usage.isLifetime !== undefined ? usage.isLifetime : true } }));
           throw new Error("LIMIT_REACHED_SILENT");
         }
         throw new Error(data?.error || "Failed to analyze CVs");
@@ -200,7 +201,8 @@ export default function BulkCVPage() {
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 429 && data?.limitReached) {
-          window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: data.error } }));
+          const usage = data.usage || {};
+          window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: data.error, resetAt: usage.resetAt || null, isLifetime: usage.isLifetime !== undefined ? usage.isLifetime : true } }));
           throw new Error("LIMIT_REACHED_SILENT");
         }
         throw new Error(data.error || "Failed to generate questions");

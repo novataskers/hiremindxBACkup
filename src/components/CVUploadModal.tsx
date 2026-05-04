@@ -107,7 +107,8 @@ export default function CVUploadModal({ open, onOpenChange }: CVUploadModalProps
       if (!analysisResponse.ok) {
         const error = await analysisResponse.json();
         if (analysisResponse.status === 429 && error?.limitReached) {
-          window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: error.error } }));
+          const usage = error.usage || {};
+          window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: error.error, resetAt: usage.resetAt || null, isLifetime: usage.isLifetime !== undefined ? usage.isLifetime : true } }));
           throw new Error("LIMIT_REACHED_SILENT");
         }
         throw new Error(error.error || "Failed to analyze CV");

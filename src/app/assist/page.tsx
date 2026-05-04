@@ -836,7 +836,8 @@ export default function AssistPage() {
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           if (response.status === 429 && errorData?.limitReached) {
-            window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: errorData.error } }));
+            const usage = errorData.usage || {};
+            window.dispatchEvent(new CustomEvent("usage-limit-reached", { detail: { message: errorData.error, resetAt: usage.resetAt || null, isLifetime: usage.isLifetime !== undefined ? usage.isLifetime : true } }));
             throw new Error("LIMIT_REACHED_SILENT");
           }
           if (response.status === 413) throw new Error('File too large. Please use a smaller file.');

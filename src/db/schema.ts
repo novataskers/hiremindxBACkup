@@ -467,33 +467,33 @@ export const subscriptions = sqliteTable('subscriptions', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
 
-// Usage limits for free users
+// Usage limits for free users — each feature tracked independently
 export const userUsageLimits = sqliteTable('user_usage_limits', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
-  
-  // Deep analysis - limit 2 (Lifetime)
-  deepFeaturesCount: integer('deep_features_count').notNull().default(0),
-  deepFeaturesResetAt: text('deep_features_reset_at'), // No longer used for reset, kept for compatibility
-  
-  // Outreach - limit 2 (Lifetime)
-  outreachFeaturesCount: integer('outreach_features_count').notNull().default(0),
-  outreachFeaturesResetAt: text('outreach_features_reset_at'), // No longer used for reset
-  
-  // Attachments - limit 3 (24h reset)
+  userId: text('user_id').notNull().unique(),
+
+  // ── Lifetime limits (no reset) ──
+  // Assist features — limit 2 each
+  deepResearchCount: integer('deep_research_count').notNull().default(0),
+  marketAnalysisCount: integer('market_analysis_count').notNull().default(0),
+  aiPredictionCount: integer('ai_prediction_count').notNull().default(0),
+  canvasCodingCount: integer('canvas_coding_count').notNull().default(0),
+  // Outreach features — limit 2 each
+  emailOutreachCount: integer('email_outreach_count').notNull().default(0),
+  examQuestionsCount: integer('exam_questions_count').notNull().default(0),
+  // HireMindX Match (Bulk CV + Interview Questions) — limit 1 total
+  matchCount: integer('match_count').notNull().default(0),
+  // Community AI Agent — limit 1
+  communityAiCount: integer('community_ai_count').notNull().default(0),
+
+  // ── 24h reset limits ──
+  // Attachments in Assist — limit 3/day
   attachmentCount: integer('attachment_count').notNull().default(0),
   attachmentResetAt: text('attachment_reset_at'),
-  
-  // Chat messages - limit 30 (24h reset)
+  // Chat messages in Assist — limit 30/day
   chatMessageCount: integer('chat_message_count').notNull().default(0),
   chatMessageResetAt: text('chat_message_reset_at'),
 
-  // Community - limit 1 (Lifetime)
-  communityCount: integer('community_count').notNull().default(0),
-
-  // HireMindX Match (Bulk CV) - limit 1 (Lifetime)
-  matchCount: integer('match_count').notNull().default(0),
-  
   updatedAt: text('updated_at').notNull(),
 });
 

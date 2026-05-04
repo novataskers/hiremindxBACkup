@@ -242,6 +242,8 @@ export async function POST(request: NextRequest) {
           limit: usageResult.limit,
           remaining: usageResult.remaining,
           plan: usageResult.plan,
+          resetAt: usageResult.resetAt,
+          isLifetime: usageResult.isLifetime,
         },
       }, { status: 429 });
     }

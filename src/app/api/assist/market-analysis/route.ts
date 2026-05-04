@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({
       error: usageResult.upgradeMessage,
       limitReached: true,
-      usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+      usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan, resetAt: usageResult.resetAt, isLifetime: usageResult.isLifetime },
     }), { status: 429, headers: { "Content-Type": "application/json" } });
   }
 

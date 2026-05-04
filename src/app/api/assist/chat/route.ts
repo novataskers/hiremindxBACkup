@@ -303,17 +303,14 @@ export async function POST(request: NextRequest) {
     // ── Check Usage Limits ──────────────────────────────────────────────────
     const totalAttachments = (bodyAttachments?.length || 0) + (file ? 1 : 0);
     if (totalAttachments > 0) {
-      // Check once for the first attachment to see if we're already over limit
-      // Then check for each one to increment correctly
-      for (let i = 0; i < totalAttachments; i++) {
-        const usageResult = await useFeature(userId, "file_uploads");
-        if (!usageResult.allowed) {
-          return NextResponse.json({
-            error: usageResult.upgradeMessage,
-            limitReached: true,
-            usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
-          }, { status: 429 });
-        }
+      // Check and increment attachment quota in one call (1 attachment = 1 use)
+      const usageResult = await useFeature(userId, "file_uploads", totalAttachments);
+      if (!usageResult.allowed) {
+        return NextResponse.json({
+          error: usageResult.upgradeMessage,
+          limitReached: true,
+          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan, resetAt: usageResult.resetAt, isLifetime: usageResult.isLifetime },
+        }, { status: 429 });
       }
     }
 
@@ -323,7 +320,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           error: usageResult.upgradeMessage,
           limitReached: true,
-          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan, resetAt: usageResult.resetAt, isLifetime: usageResult.isLifetime },
         }, { status: 429 });
       }
     }
@@ -336,7 +333,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           error: usageResult.upgradeMessage,
           limitReached: true,
-          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan, resetAt: usageResult.resetAt, isLifetime: usageResult.isLifetime },
         }, { status: 429 });
       }
     } else if (isOutreach || isDocumentRequest) {
@@ -345,7 +342,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           error: usageResult.upgradeMessage,
           limitReached: true,
-          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan },
+          usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan, resetAt: usageResult.resetAt, isLifetime: usageResult.isLifetime },
         }, { status: 429 });
       }
     }

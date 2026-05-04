@@ -463,6 +463,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         error: usageResult.upgradeMessage,
         limitReached: true,
+        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan, resetAt: usageResult.resetAt, isLifetime: usageResult.isLifetime },
       }, { status: 429 });
     }
     const { message, jobData, conversationHistory } = await req.json();
