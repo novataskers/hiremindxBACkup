@@ -227,7 +227,7 @@ export async function useFeature(userId: string, feature: string, increment: num
     // Fail CLOSED — if we can't verify limits, block the action
     return {
       allowed: false,
-      upgradeMessage: `[DEBUG] useFeature error for "${feature}": ${error?.message || error} | CAUSE: ${error?.cause?.message || error?.cause || 'none'} | tsKey="${tsKey}"`,
+      upgradeMessage: "We couldn't verify your usage limits. Please try again.",
       currentUsage: 0,
       limit,
       remaining: 0,
