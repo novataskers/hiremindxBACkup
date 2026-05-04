@@ -469,7 +469,6 @@ export async function POST(req: Request) {
     // We only consume the quota when the AI actually produces a search result (nextState=posted).
     // Conversational messages (collecting info) are free so the user can complete one full search.
     const usageCheck = await useFeature(userId, "community_ai_agent", 0);
-    console.log(`[DEBUG community/chat] userId=${userId} check-only: allowed=${usageCheck.allowed} used=${usageCheck.currentUsage} limit=${usageCheck.limit} remaining=${usageCheck.remaining}`);
     if (!usageCheck.allowed) {
       return NextResponse.json({
         error: usageCheck.upgradeMessage,
@@ -516,10 +515,8 @@ export async function POST(req: Request) {
       const nextState = typeof result?.nextState === "string" ? result.nextState : "collecting";
 
       // ── Only consume the quota when the AI produces a search result ──
-      console.log(`[DEBUG community/chat] userId=${userId} nextState=${nextState}`);
       if (nextState === "posted") {
-        const consumeResult = await useFeature(userId, "community_ai_agent", 1);
-        console.log(`[DEBUG community/chat] userId=${userId} CONSUMED quota: allowed=${consumeResult.allowed} used=${consumeResult.currentUsage} remaining=${consumeResult.remaining}`);
+        await useFeature(userId, "community_ai_agent", 1);
       }
 
       return NextResponse.json({
