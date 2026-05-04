@@ -193,6 +193,20 @@ export async function useFeature(userId: string, feature: string, increment: num
       };
     }
 
+    // If increment is 0, just check the limit without updating the DB
+    if (increment === 0) {
+      return {
+        allowed: true,
+        upgradeMessage: "",
+        currentUsage: effectiveCount,
+        limit,
+        remaining,
+        plan: "Free",
+        resetAt: isLifetime ? null : (resetAt ? resetAt.toISOString() : null),
+        isLifetime,
+      };
+    }
+
     const newCount = effectiveCount + increment;
     let newResetAtStr = resetAtStr;
 

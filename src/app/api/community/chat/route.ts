@@ -457,21 +457,24 @@ export async function POST(req: Request) {
     }
 
     const userId = session.user.id;
-    const usageResult = await useFeature(userId, "community_ai_agent");
-
-    if (!usageResult.allowed) {
-      return NextResponse.json({
-        error: usageResult.upgradeMessage,
-        limitReached: true,
-        usage: { used: usageResult.currentUsage, limit: usageResult.limit, plan: usageResult.plan, resetAt: usageResult.resetAt, isLifetime: usageResult.isLifetime },
-      }, { status: 429 });
-    }
     const { message, jobData, conversationHistory } = await req.json();
     const userMessage = typeof message === "string" ? message : "";
     const currentJobData = normalizeJobData(jobData || {}, userMessage);
 
     if (!userMessage.trim()) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    }
+
+    // ── Check quota WITHOUT incrementing ──
+    // We only consume the quota when the AI actually produces a search result (nextState=posted).
+    // Conversational messages (collecting info) are free so the user can complete one full search.
+    const usageCheck = await useFeature(userId, "community_ai_agent", 0);
+    if (!usageCheck.allowed) {
+      return NextResponse.json({
+        error: usageCheck.upgradeMessage,
+        limitReached: true,
+        usage: { used: usageCheck.currentUsage, limit: usageCheck.limit, plan: usageCheck.plan, resetAt: usageCheck.resetAt, isLifetime: usageCheck.isLifetime },
+      }, { status: 429 });
     }
 
     const apiKey = process.env.MISTRAL_COMMUNITY_API_KEY || process.env.MISTRAL_API_KEY || "";
@@ -509,10 +512,17 @@ export async function POST(req: Request) {
         userMessage
       );
 
+      const nextState = typeof result?.nextState === "string" ? result.nextState : "collecting";
+
+      // ── Only consume the quota when the AI produces a search result ──
+      if (nextState === "posted") {
+        await useFeature(userId, "community_ai_agent", 1);
+      }
+
       return NextResponse.json({
         message: typeof result?.message === "string" ? result.message : "",
         jobData: normalizedJobData,
-        nextState: typeof result?.nextState === "string" ? result.nextState : "collecting",
+        nextState,
       });
     } catch (modelError) {
       console.error("Community Chat Model Error:", modelError);
