@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { userUsageLimits, subscriptions } from '@/db/schema';
-import { isActiveSubscriptionStatus, getBillingPlan, syncPendingSubscription } from '@/lib/billing';
+import { isActiveSubscriptionStatus, getBillingPlan, syncPendingSubscription, isBillingPlanId, getPlanFeatureLimit, BillingPlanId } from '@/lib/billing';
 
 // ── Per-feature configuration ──────────────────────────────────────────────
 // Each feature maps to its own DB column so limits are tracked independently.
@@ -121,33 +121,48 @@ export async function useFeature(userId: string, feature: string, increment: num
       }
     }
 
-    const isPremium = subscription && isActiveSubscriptionStatus(subscription.status);
+    const planId: BillingPlanId | null =
+      subscription && isActiveSubscriptionStatus(subscription.status) && isBillingPlanId(subscription.planId)
+        ? subscription.planId
+        : null;
 
-    if (isPremium) {
-      const planInfo = getBillingPlan(subscription.planId);
+    const planInfo = planId ? getBillingPlan(planId) : null;
+    const planName = planInfo?.name || "Free";
+
+    // Determine effective limit: plan-specific > free config
+    let effectiveLimit = limit;
+    if (planId) {
+      effectiveLimit = getPlanFeatureLimit(planId, feature);
+    }
+
+    // Feature blocked on this plan (or free user on a premium-only feature)
+    if (effectiveLimit === 0) {
+      const msg = planId
+        ? `This feature is not included in your ${planName} plan. Upgrade to unlock it.`
+        : "This feature is only available on Premium plans. Upgrade to unlock it.";
+      return {
+        allowed: false,
+        upgradeMessage: msg,
+        currentUsage: 0,
+        limit: 0,
+        remaining: 0,
+        plan: planName,
+        resetAt: null,
+        isLifetime: true,
+      };
+    }
+
+    // Unlimited on this plan — skip DB tracking
+    if (effectiveLimit === Infinity) {
       return {
         ...resultTemplate,
-        plan: planInfo?.name || "Premium",
+        plan: planName,
         limit: Infinity,
         remaining: Infinity,
       };
     }
 
     const now = new Date();
-
-    // Premium-only features (limit 0, no counter column) — always blocked for free users
-    if (limit === 0 && !tsKey) {
-      return {
-        allowed: false,
-        upgradeMessage: "This feature is only available on Premium plans. Upgrade to unlock it.",
-        currentUsage: 0,
-        limit: 0,
-        remaining: 0,
-        plan: "Free",
-        resetAt: null,
-        isLifetime: true,
-      };
-    }
 
     let usageRowRows = await db
       .select()
@@ -189,21 +204,21 @@ export async function useFeature(userId: string, feature: string, increment: num
     }
 
     const effectiveCount = isReset ? 0 : count;
-    const remaining = Math.max(0, limit - effectiveCount);
+    const remaining = Math.max(0, effectiveLimit - effectiveCount);
     const allowed = remaining >= increment;
 
     if (!allowed) {
       const resetMessage = isLifetime
-        ? "Upgrade to a Premium plan to get unlimited access."
-        : "Upgrade to a Premium plan to get unlimited access, or wait for your limit to reset.";
+        ? "Upgrade to a higher plan to get more access."
+        : "Upgrade to a higher plan to get more access, or wait for your limit to reset.";
 
       return {
         allowed: false,
-        upgradeMessage: `You've reached your free limit for this feature. ${resetMessage}`,
+        upgradeMessage: `You've reached your limit for this feature. ${resetMessage}`,
         currentUsage: effectiveCount,
-        limit,
+        limit: effectiveLimit,
         remaining: 0,
-        plan: "Free",
+        plan: planName,
         resetAt: isLifetime ? null : (resetAt ? resetAt.toISOString() : null),
         isLifetime,
       };
@@ -215,9 +230,9 @@ export async function useFeature(userId: string, feature: string, increment: num
         allowed: true,
         upgradeMessage: "",
         currentUsage: effectiveCount,
-        limit,
+        limit: effectiveLimit,
         remaining,
-        plan: "Free",
+        plan: planName,
         resetAt: isLifetime ? null : (resetAt ? resetAt.toISOString() : null),
         isLifetime,
       };
@@ -244,9 +259,9 @@ export async function useFeature(userId: string, feature: string, increment: num
       allowed: true,
       upgradeMessage: "",
       currentUsage: newCount,
-      limit,
-      remaining: limit - newCount,
-      plan: "Free",
+      limit: effectiveLimit,
+      remaining: effectiveLimit - newCount,
+      plan: planName,
       resetAt: isLifetime ? null : (newResetAtStr ?? resetAtStr),
       isLifetime,
     };
@@ -278,7 +293,8 @@ export async function getUsageSummary(userId: string) {
 
     const subscription = subscriptionRows[0];
     const isPremium = subscription && isActiveSubscriptionStatus(subscription.status) && !subscription.cancelAtPeriodEnd;
-    const planName = isPremium ? (getBillingPlan(subscription.planId)?.name || "Premium") : "Free";
+    const planId: BillingPlanId | null = isPremium && subscription && isBillingPlanId(subscription.planId) ? subscription.planId : null;
+    const planName = planId ? (getBillingPlan(planId)?.name || "Premium") : "Free";
 
     let usageRowRows = await db
       .select()
@@ -299,10 +315,19 @@ export async function getUsageSummary(userId: string) {
         effectiveCount = 0;
       }
 
+      // Determine effective limit based on plan
+      let effectiveLimit = config.limit;
+      if (planId) {
+        effectiveLimit = getPlanFeatureLimit(planId, feature);
+      }
+
+      const isBlocked = effectiveLimit === 0;
+      const isUnlimited = effectiveLimit === Infinity;
+
       return {
-        count: isPremium ? 0 : effectiveCount,
-        limit: isPremium ? Infinity : config.limit,
-        remaining: isPremium ? Infinity : Math.max(0, config.limit - effectiveCount),
+        count: isUnlimited ? 0 : effectiveCount,
+        limit: effectiveLimit,
+        remaining: isUnlimited ? Infinity : Math.max(0, effectiveLimit - effectiveCount),
         resetAt: config.isLifetime ? null : resetAt,
         isLifetime: config.isLifetime,
       };

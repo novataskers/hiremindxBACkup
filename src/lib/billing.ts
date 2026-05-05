@@ -60,6 +60,64 @@ export function isActiveSubscriptionStatus(status: string | null | undefined): b
   return status === "active" || status === "trialing";
 }
 
+/** Per-plan feature limits. `Infinity` means unlimited. `0` means blocked on that plan. */
+export const PLAN_FEATURE_LIMITS: Record<BillingPlanId, Record<string, number>> = {
+  basic: {
+    chat_messages: 999,
+    file_uploads: 5,
+    email_outreach: 7,
+    community_messaging: Infinity,
+    community_contract: Infinity,
+    community_post: 3,
+    deep_research: 0,
+    market_analysis: 0,
+    ai_prediction: 0,
+    live_coding: 0,
+    bulk_cv_analysis: 0,
+    interview_questions: 0,
+    exam_questions: 0,
+    community_ai_agent: 0,
+  },
+  pro: {
+    chat_messages: Infinity,
+    file_uploads: Infinity,
+    email_outreach: Infinity,
+    deep_research: Infinity,
+    market_analysis: Infinity,
+    ai_prediction: Infinity,
+    community_messaging: Infinity,
+    community_contract: Infinity,
+    community_post: Infinity,
+    bulk_cv_analysis: 10,
+    interview_questions: 10,
+    exam_questions: 5,
+    community_ai_agent: 5,
+    live_coding: 0,
+  },
+  elite: {
+    chat_messages: Infinity,
+    file_uploads: Infinity,
+    email_outreach: Infinity,
+    deep_research: Infinity,
+    market_analysis: Infinity,
+    ai_prediction: Infinity,
+    live_coding: Infinity,
+    bulk_cv_analysis: Infinity,
+    interview_questions: Infinity,
+    exam_questions: Infinity,
+    community_ai_agent: Infinity,
+    community_messaging: Infinity,
+    community_contract: Infinity,
+    community_post: Infinity,
+  },
+};
+
+export function getPlanFeatureLimit(planId: BillingPlanId, feature: string): number {
+  const planLimits = PLAN_FEATURE_LIMITS[planId];
+  if (!planLimits) return 0;
+  return planLimits[feature] ?? 0;
+}
+
 export function getPlanPriceGbp(plan: BillingPlan): number {
   return plan.amountPence / 100;
 }
