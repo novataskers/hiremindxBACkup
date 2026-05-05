@@ -39,9 +39,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   let subscription = subscriptionRows[0] ?? null;
 
+  console.log("[subscription-api] user=", session.user.id, "sub=", subscription ? { status: subscription.status, checkoutId: subscription.stripeCheckoutSessionId, subId: subscription.stripeSubscriptionId } : "null");
+
   // Proactively check Stripe if the status is pending (e.g. just returned from checkout but webhook hasn't fired)
-  if (subscription && subscription.status === "pending" && subscription.stripeCheckoutSessionId) {
+  if (subscription && subscription.status === "pending") {
+    console.log("[subscription-api] status is pending, calling syncPendingSubscription");
     const result = await syncPendingSubscription(session.user.id, subscription);
+    console.log("[subscription-api] syncPendingSubscription result:", result);
     if (result.activated) {
       const updatedRows = await db
         .select()
@@ -49,6 +53,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .where(eq(subscriptions.userId, session.user.id))
         .limit(1);
       subscription = updatedRows[0] ?? null;
+      console.log("[subscription-api] subscription updated after sync:", subscription ? { status: subscription.status } : "null");
     }
   }
 

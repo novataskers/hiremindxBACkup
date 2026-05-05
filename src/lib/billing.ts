@@ -100,29 +100,40 @@ export async function syncPendingSubscription(
 
     // Path 1: check via checkout session (primary)
     if (subscription.stripeCheckoutSessionId) {
+      console.log("[syncPending] Path 1: retrieving checkout session", subscription.stripeCheckoutSessionId);
       const checkoutSession = await stripe.checkout.sessions.retrieve(subscription.stripeCheckoutSessionId);
+      console.log("[syncPending] checkout session status=", checkoutSession.status, "subscription=", checkoutSession.subscription ? "present" : "missing");
 
       if (checkoutSession.status === "complete" && checkoutSession.subscription) {
         const stripeSubscriptionId =
           typeof checkoutSession.subscription === "string" ? checkoutSession.subscription : checkoutSession.subscription.id;
+        console.log("[syncPending] retrieving subscription", stripeSubscriptionId);
         stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+        console.log("[syncPending] subscription status=", stripeSub.status);
       }
+    } else {
+      console.log("[syncPending] Path 1 skipped: no checkout session ID");
     }
 
     // Path 2: fallback — check subscription directly if webhook already set the ID but status is still pending
     if (!stripeSub && subscription.stripeSubscriptionId) {
+      console.log("[syncPending] Path 2: retrieving subscription by ID", subscription.stripeSubscriptionId);
       stripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+      console.log("[syncPending] fallback subscription status=", stripeSub.status);
     }
 
     if (!stripeSub) {
+      console.log("[syncPending] No subscription found via either path");
       return { activated: false };
     }
 
     // Only activate if Stripe considers it active or trialing
     if (!isActiveSubscriptionStatus(stripeSub.status)) {
+      console.log("[syncPending] Subscription status not active:", stripeSub.status);
       return { activated: false };
     }
 
+    console.log("[syncPending] Activating subscription with status:", stripeSub.status);
     await db
       .update(subscriptions)
       .set({
