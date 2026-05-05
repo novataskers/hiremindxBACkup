@@ -179,19 +179,23 @@ async function syncStripeSubscription({
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   let event: Stripe.Event;
+  console.log("[stripe-webhook] received webhook request");
 
   try {
     const stripe = getStripeClient();
     const signature = request.headers.get("stripe-signature");
 
     if (!signature) {
+      console.error("[stripe-webhook] missing stripe-signature header");
       return jsonError("Missing Stripe signature.", 400);
     }
 
     const secret = getWebhookSecret();
+    console.log("[stripe-webhook] secret configured, length:", secret.length);
     const payload = await request.text();
 
     event = stripe.webhooks.constructEvent(payload, signature, secret);
+    console.log("[stripe-webhook] event verified, type:", event.type);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid webhook payload.";
     console.error("[stripe-webhook] verification failed:", error);
@@ -204,29 +208,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
+        console.log("[stripe-webhook] checkout.session.completed, mode:", session.mode, "client_ref_id:", session.client_reference_id);
 
         if (session.mode !== "subscription") {
+          console.log("[stripe-webhook] skipping non-subscription session");
           break;
         }
 
         const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id ?? null;
         const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
+        console.log("[stripe-webhook] subscriptionId:", subscriptionId, "customerId:", customerId);
+
         const userId = await findUserIdFromStripeIdentifiers({
           userId: session.client_reference_id ?? session.metadata?.userId ?? null,
           customerId,
           subscriptionId,
         });
 
+        console.log("[stripe-webhook] resolved userId:", userId);
+
         if (!userId || !subscriptionId) {
+          console.error("[stripe-webhook] missing userId or subscriptionId, aborting");
           break;
         }
 
         const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+        console.log("[stripe-webhook] stripe subscription status:", stripeSubscription.status, "planId:", stripeSubscription.metadata?.planId);
         await syncStripeSubscription({
           userId,
           stripeSubscription,
           stripeCheckoutSessionId: session.id,
         });
+        console.log("[stripe-webhook] subscription synced successfully for userId:", userId);
         break;
       }
 
@@ -301,6 +314,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.error("[stripe-webhook] processing failed:", error);
     return jsonError("Webhook processing failed.", 500);
   }
+
+  console.log("[stripe-webhook] completed successfully");
 
   return NextResponse.json({ received: true });
 }
