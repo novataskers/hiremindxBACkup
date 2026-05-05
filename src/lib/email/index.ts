@@ -4,6 +4,7 @@ export type HireMindXEmailNotificationVariant =
   | "message"
   | "contract_offer"
   | "contract_response"
+  | "contract_declined"
   | "general_notification"
   | "job_alert";
 
@@ -99,6 +100,8 @@ function getVariantAccent(variant: HireMindXEmailNotificationVariant) {
       return "#4ADE80"; // Bright Green
     case "contract_response":
       return "#60A5FA"; // Bright Blue
+    case "contract_declined":
+      return "#EF4444"; // Red
     case "job_alert":
       return "#F472B6"; // Pink
     case "general_notification":
@@ -128,6 +131,13 @@ function getVariantIconSvg(variant: HireMindXEmailNotificationVariant, color: st
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         <polyline points="14 2 14 8 20 8" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         <path d="M9 15l2 2 4-4" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>`;
+    case "contract_declined":
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <polyline points="14 2 14 8 20 8" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <line x1="9" y1="9" x2="15" y2="15" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="15" y1="9" x2="9" y2="15" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>`;
     case "job_alert":
       return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
@@ -200,8 +210,7 @@ export function renderHireMindXEmailTemplate(
   const safeSummary = escapeHtml(params.summary);
   const safeRecipientName = params.recipientName ? escapeHtml(params.recipientName) : "there";
   
-  const siteUrl = config.siteUrl; // Already normalized with https
-  const logoUrl = `${siteUrl}/email-logo.png`;
+  const siteUrl = config.siteUrl;
 
   const metadataHtml = params.metadata?.length
     ? params.metadata
@@ -238,7 +247,6 @@ export function renderHireMindXEmailTemplate(
       .email-container { width: 100% !important; }
       .content-card { padding: 36px 24px !important; }
       .header-pad { padding: 48px 20px 36px !important; }
-      .logo-img { width: 160px !important; }
     }
   </style>
 </head>
@@ -253,14 +261,27 @@ export function renderHireMindXEmailTemplate(
       <td align="center" style="padding: 0 0 64px 0;">
         <table border="0" cellpadding="0" cellspacing="0" class="email-container" style="max-width: 560px; width: 560px; margin: 0 auto;">
           
-          <!-- Header (Logo with glow) -->
+          <!-- Header (Logo) -->
           <tr>
             <td align="center" class="header-pad" style="padding: 56px 0 40px 0;">
               <a href="${escapeHtml(siteUrl)}" style="display: inline-block; text-decoration: none;">
                 <table border="0" cellpadding="0" cellspacing="0">
                   <tr>
-                    <td style="background: radial-gradient(ellipse 80% 60% at 50% 50%, rgba(212,175,55,0.15) 0%, rgba(10,10,10,0) 70%); padding: 24px 40px;">
-                      <img src="${escapeHtml(logoUrl)}" alt="HireMindX" width="200" class="logo-img" style="width: 200px; max-width: 100%; height: auto; display: block;" />
+                    <td style="padding: 8px 0;">
+                      <table border="0" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="padding-right: 10px; vertical-align: middle;">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+                              <polygon points="12 2 2 7 12 12 22 7" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                              <path d="M2 17l10 5 10-5" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                              <path d="M2 12l10 5 10-5" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                            </svg>
+                          </td>
+                          <td style="vertical-align: middle;">
+                            <span style="font-size: 14px; font-weight: 700; color: #FFFFFF; letter-spacing: 0.22em; text-transform: uppercase; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">HireMindX</span>
+                          </td>
+                        </tr>
+                      </table>
                     </td>
                   </tr>
                 </table>

@@ -135,10 +135,12 @@ function buildNotificationPayload(messageValue: string, senderName: string) {
           ? "declined"
           : "updated";
 
+    const isDeclined = action === "declined";
+
     return {
       notificationType: "contract_response",
-      emailVariant: "contract_response" as const,
-      title: "Contract response received",
+      emailVariant: isDeclined ? ("contract_declined" as const) : ("contract_response" as const),
+      title: isDeclined ? "Contract declined" : "Contract response received",
       message: `${senderName} ${action} your contract offer.`,
       emailSubject: `Contract ${action} by ${senderName}`,
       emailSummary: `${senderName} ${action} a contract on HireMindX.`,
