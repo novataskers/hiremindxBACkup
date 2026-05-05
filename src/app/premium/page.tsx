@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import AppHeader from "@/components/AppHeader";
-import { Check, Crown, Zap, Rocket, Star, Shield, AlertTriangle, XCircle, ArrowUpRight, ArrowDownRight, CreditCard, Wallet, CircleDollarSign } from "lucide-react";
+import { Check, Crown, Zap, Rocket, Star, Shield, AlertTriangle, XCircle, ArrowUpRight, ArrowDownRight, CreditCard, Wallet, CircleDollarSign, RefreshCw, Loader2 } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -184,20 +184,29 @@ function PremiumPageContent() {
   const [pricingLoading, setPricingLoading] = useState(true);
   const [subscriptionData, setSubscriptionData] = useState<SubscriptionData | null>(null);
   const [subLoading, setSubLoading] = useState(true);
+  const [subError, setSubError] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [checkoutModalPlanId, setCheckoutModalPlanId] = useState<string | null>(null);
+  const [isActivating, setIsActivating] = useState(false);
 
   // Load subscription data
   const loadSubscription = useCallback(async () => {
     try {
       setSubLoading(true);
+      setSubError(null);
       const response = await fetch("/api/billing/subscription", { cache: "no-store" });
-      if (response.ok) {
-        const data = (await response.json()) as SubscriptionData;
-        setSubscriptionData(data);
+      if (!response.ok) {
+        const text = await response.text();
+        setSubError(`Unable to load subscription status. (${response.status})`);
+        console.error("Subscription API error:", response.status, text);
+        return;
       }
+      const data = (await response.json()) as SubscriptionData;
+      setSubscriptionData(data);
     } catch (error) {
+      const msg = error instanceof Error ? error.message : "Network error";
+      setSubError(`Unable to load subscription status. ${msg}`);
       console.error("Failed to load subscription:", error);
     } finally {
       setSubLoading(false);
@@ -219,8 +228,24 @@ function PremiumPageContent() {
       toast.success("Checkout completed!", {
         description: plan ? `Your ${plan} plan is now being activated.` : "Your subscription is being activated.",
       });
-      // Refresh subscription data after successful checkout
-      setTimeout(() => loadSubscription(), 2000);
+      setIsActivating(true);
+      // Poll subscription status every 3 seconds for up to 60 seconds
+      let attempts = 0;
+      const maxAttempts = 20;
+      const pollInterval = setInterval(async () => {
+        attempts++;
+        await loadSubscription();
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+          setIsActivating(false);
+          toast.info("Activation may take a moment", {
+            description: "Please refresh the page or click Refresh Status if your plan doesn't appear shortly.",
+          });
+        }
+      }, 3000);
+      // Also do an immediate refresh
+      setTimeout(() => loadSubscription(), 1500);
+      return () => clearInterval(pollInterval);
     }
 
     if (canceled === "1") {
@@ -303,6 +328,13 @@ function PremiumPageContent() {
       controller.abort();
     };
   }, []);
+
+  // Clear activating state once subscription is no longer pending
+  useEffect(() => {
+    if (isActivating && subscriptionData?.subscription?.status && subscriptionData.subscription.status !== "pending") {
+      setIsActivating(false);
+    }
+  }, [subscriptionData, isActivating]);
 
   const pricingBanner = useMemo(() => {
     if (pricingLoading) {
@@ -456,6 +488,60 @@ function PremiumPageContent() {
               </div>
             </motion.div>
 
+            {/* Pending / Activating Banner */}
+            {(isActivating || subscriptionData?.subscription?.status === "pending") && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-8"
+              >
+                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                      <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Activating your plan</h3>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        Payment received. We are confirming your subscription with Stripe. This usually takes a few seconds.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Subscription Error Banner */}
+            {subError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-8"
+              >
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/[0.04] p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                        <AlertTriangle className="w-5 h-5 text-red-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Unable to verify subscription</h3>
+                        <p className="text-xs text-zinc-400 mt-0.5">{subError}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={loadSubscription}
+                      disabled={subLoading}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/[0.08] bg-white/[0.06] text-sm font-medium text-zinc-300 hover:bg-white/10 transition-all disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${subLoading ? "animate-spin" : ""}`} />
+                      Refresh Status
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
             {/* Active Subscription Banner */}
             {!subLoading && hasActiveSubscription && (
               <motion.div
@@ -503,16 +589,27 @@ function PremiumPageContent() {
                       </div>
                     </div>
 
-                    {!isCanceling && (
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setShowCancelConfirm(true)}
-                        disabled={cancelLoading}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-red-500/20 bg-red-500/[0.06] text-sm font-medium text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50"
+                        onClick={loadSubscription}
+                        disabled={subLoading}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/[0.08] bg-white/[0.04] text-sm font-medium text-zinc-400 hover:bg-white/[0.08] transition-all disabled:opacity-50"
+                        title="Refresh subscription status"
                       >
-                        <XCircle className="w-3.5 h-3.5" />
-                        Cancel Plan
+                        <RefreshCw className={`w-3.5 h-3.5 ${subLoading ? "animate-spin" : ""}`} />
+                        <span className="hidden sm:inline">Refresh</span>
                       </button>
-                    )}
+                      {!isCanceling && (
+                        <button
+                          onClick={() => setShowCancelConfirm(true)}
+                          disabled={cancelLoading}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-red-500/20 bg-red-500/[0.06] text-sm font-medium text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          Cancel Plan
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   {showCancelConfirm && (

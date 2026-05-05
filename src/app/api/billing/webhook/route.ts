@@ -94,12 +94,33 @@ async function persistSubscription({
   interval: string;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
-  stripeCheckoutSessionId: string | null;
+  stripeCheckoutSessionId?: string | null;
   currentPeriodStart: Date | null;
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
   metadata: Record<string, unknown>;
 }): Promise<void> {
+  // Build update set — only overwrite stripeCheckoutSessionId when we have a real value
+  // (prevents customer.subscription.updated from erasing the checkout session ID)
+  const updateSet: Record<string, unknown> = {
+    planId,
+    status,
+    currency,
+    amount,
+    interval,
+    stripeCustomerId,
+    stripeSubscriptionId,
+    currentPeriodStart,
+    currentPeriodEnd,
+    cancelAtPeriodEnd,
+    metadata,
+    updatedAt: new Date(),
+  };
+
+  if (stripeCheckoutSessionId !== undefined && stripeCheckoutSessionId !== null) {
+    updateSet.stripeCheckoutSessionId = stripeCheckoutSessionId;
+  }
+
   await db
     .insert(subscriptions)
     .values({
@@ -111,7 +132,7 @@ async function persistSubscription({
       interval,
       stripeCustomerId,
       stripeSubscriptionId,
-      stripeCheckoutSessionId,
+      stripeCheckoutSessionId: stripeCheckoutSessionId ?? null,
       currentPeriodStart,
       currentPeriodEnd,
       cancelAtPeriodEnd,
@@ -120,21 +141,7 @@ async function persistSubscription({
     })
     .onConflictDoUpdate({
       target: subscriptions.userId,
-      set: {
-        planId,
-        status,
-        currency,
-        amount,
-        interval,
-        stripeCustomerId,
-        stripeSubscriptionId,
-        stripeCheckoutSessionId,
-        currentPeriodStart,
-        currentPeriodEnd,
-        cancelAtPeriodEnd,
-        metadata,
-        updatedAt: new Date(),
-      },
+      set: updateSet,
     });
 }
 
@@ -164,8 +171,8 @@ async function syncStripeSubscription({
     stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : null,
     stripeSubscriptionId: stripeSubscription.id,
     stripeCheckoutSessionId: stripeCheckoutSessionId ?? null,
-    currentPeriodStart: toDate(stripeSubscription.current_period_start),
-    currentPeriodEnd: toDate(stripeSubscription.current_period_end),
+    currentPeriodStart: toDate((stripeSubscription as any).current_period_start),
+    currentPeriodEnd: toDate((stripeSubscription as any).current_period_end),
     cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
     metadata: {
       stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : null,
@@ -293,8 +300,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : null,
           stripeSubscriptionId: stripeSubscription.id,
           stripeCheckoutSessionId: stripeSubscription.metadata?.checkoutSessionId ?? null,
-          currentPeriodStart: toDate(stripeSubscription.current_period_start),
-          currentPeriodEnd: toDate(stripeSubscription.current_period_end ?? stripeSubscription.canceled_at),
+          currentPeriodStart: toDate((stripeSubscription as any).current_period_start),
+          currentPeriodEnd: toDate((stripeSubscription as any).current_period_end ?? (stripeSubscription as any).canceled_at),
           cancelAtPeriodEnd: false,
           metadata: {
             stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : null,

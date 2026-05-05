@@ -1,3 +1,5 @@
+import Stripe from "stripe";
+
 export type BillingPlanId = "basic" | "pro" | "elite";
 
 export type BillingInterval = "month";
@@ -83,7 +85,7 @@ export async function syncPendingSubscription(
   userId: string,
   subscription: { stripeCheckoutSessionId: string | null; status: string; stripeSubscriptionId: string | null },
 ): Promise<{ activated: boolean; newStatus?: string }> {
-  if (subscription.status !== "pending" || !subscription.stripeCheckoutSessionId) {
+  if (subscription.status !== "pending") {
     return { activated: false };
   }
 
@@ -94,24 +96,40 @@ export async function syncPendingSubscription(
     const { getStripeClient } = await import("@/lib/stripe");
     const stripe = getStripeClient();
 
-    const checkoutSession = await stripe.checkout.sessions.retrieve(subscription.stripeCheckoutSessionId);
+    let stripeSub: Stripe.Subscription | null = null;
 
-    if (checkoutSession.status !== "complete" || !checkoutSession.subscription) {
+    // Path 1: check via checkout session (primary)
+    if (subscription.stripeCheckoutSessionId) {
+      const checkoutSession = await stripe.checkout.sessions.retrieve(subscription.stripeCheckoutSessionId);
+
+      if (checkoutSession.status === "complete" && checkoutSession.subscription) {
+        const stripeSubscriptionId =
+          typeof checkoutSession.subscription === "string" ? checkoutSession.subscription : checkoutSession.subscription.id;
+        stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+      }
+    }
+
+    // Path 2: fallback — check subscription directly if webhook already set the ID but status is still pending
+    if (!stripeSub && subscription.stripeSubscriptionId) {
+      stripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+    }
+
+    if (!stripeSub) {
       return { activated: false };
     }
 
-    const stripeSubscriptionId =
-      typeof checkoutSession.subscription === "string" ? checkoutSession.subscription : checkoutSession.subscription.id;
-
-    const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+    // Only activate if Stripe considers it active or trialing
+    if (!isActiveSubscriptionStatus(stripeSub.status)) {
+      return { activated: false };
+    }
 
     await db
       .update(subscriptions)
       .set({
         status: stripeSub.status,
-        stripeSubscriptionId,
-        currentPeriodStart: new Date(stripeSub.current_period_start * 1000),
-        currentPeriodEnd: new Date(stripeSub.current_period_end * 1000),
+        stripeSubscriptionId: stripeSub.id,
+        currentPeriodStart: new Date((stripeSub as any).current_period_start * 1000),
+        currentPeriodEnd: new Date((stripeSub as any).current_period_end * 1000),
         cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
         updatedAt: new Date(),
       })

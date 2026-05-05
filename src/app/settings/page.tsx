@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, type JSX } from "react";
 import Sidebar from "@/components/Sidebar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

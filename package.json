@@ -6,7 +6,8 @@
         "dev": "next dev --turbopack",
         "build": "next build",
         "start": "next start",
-        "lint": "next lint"
+        "lint": "next lint",
+        "db:push": "drizzle-kit push"
     },
     "dependencies": {
         "@ai-sdk/mistral": "^3.0.2",

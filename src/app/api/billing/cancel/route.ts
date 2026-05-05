@@ -59,8 +59,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const latestInvoiceId = typeof stripeSub.latest_invoice === "string" ? stripeSub.latest_invoice : stripeSub.latest_invoice.id;
         const invoice = await stripe.invoices.retrieve(latestInvoiceId);
         
-        if (invoice.payment_intent) {
-          const paymentIntentId = typeof invoice.payment_intent === "string" ? invoice.payment_intent : invoice.payment_intent.id;
+        const invAny = invoice as any;
+        if (invAny.payment_intent) {
+          const paymentIntentId = typeof invAny.payment_intent === "string" ? invAny.payment_intent : invAny.payment_intent.id;
           await stripe.refunds.create({
             payment_intent: paymentIntentId,
           });
