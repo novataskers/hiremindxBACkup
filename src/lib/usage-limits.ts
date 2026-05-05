@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { userUsageLimits, subscriptions } from '@/db/schema';
-import { isActiveSubscriptionStatus, getBillingPlan } from '@/lib/billing';
+import { isActiveSubscriptionStatus, getBillingPlan, syncPendingSubscription } from '@/lib/billing';
 
 // ── Per-feature configuration ──────────────────────────────────────────────
 // Each feature maps to its own DB column so limits are tracked independently.
@@ -106,8 +106,22 @@ export async function useFeature(userId: string, feature: string, increment: num
       .where(eq(subscriptions.userId, userId))
       .limit(1);
 
-    const subscription = subscriptionRows[0];
-    const isPremium = subscription && isActiveSubscriptionStatus(subscription.status) && !subscription.cancelAtPeriodEnd;
+    let subscription = subscriptionRows[0];
+
+    // Proactively sync pending subscriptions with Stripe
+    if (subscription && subscription.status === "pending" && subscription.stripeCheckoutSessionId) {
+      const result = await syncPendingSubscription(userId, subscription);
+      if (result.activated) {
+        const updatedRows = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.userId, userId))
+          .limit(1);
+        subscription = updatedRows[0];
+      }
+    }
+
+    const isPremium = subscription && isActiveSubscriptionStatus(subscription.status);
 
     if (isPremium) {
       const planInfo = getBillingPlan(subscription.planId);

@@ -73,3 +73,53 @@ export function buildCheckoutCancelUrl(baseUrl: string, planId: BillingPlanId): 
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, "");
 }
+
+/**
+ * Proactively sync a pending subscription with Stripe.
+ * If the checkout session is complete and a subscription exists,
+ * update the DB with the active status.
+ */
+export async function syncPendingSubscription(
+  userId: string,
+  subscription: { stripeCheckoutSessionId: string | null; status: string; stripeSubscriptionId: string | null },
+): Promise<{ activated: boolean; newStatus?: string }> {
+  if (subscription.status !== "pending" || !subscription.stripeCheckoutSessionId) {
+    return { activated: false };
+  }
+
+  try {
+    const { eq } = await import("drizzle-orm");
+    const { db } = await import("@/db");
+    const { subscriptions } = await import("@/db/schema");
+    const { getStripeClient } = await import("@/lib/stripe");
+    const stripe = getStripeClient();
+
+    const checkoutSession = await stripe.checkout.sessions.retrieve(subscription.stripeCheckoutSessionId);
+
+    if (checkoutSession.status !== "complete" || !checkoutSession.subscription) {
+      return { activated: false };
+    }
+
+    const stripeSubscriptionId =
+      typeof checkoutSession.subscription === "string" ? checkoutSession.subscription : checkoutSession.subscription.id;
+
+    const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+
+    await db
+      .update(subscriptions)
+      .set({
+        status: stripeSub.status,
+        stripeSubscriptionId,
+        currentPeriodStart: new Date(stripeSub.current_period_start * 1000),
+        currentPeriodEnd: new Date(stripeSub.current_period_end * 1000),
+        cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptions.userId, userId));
+
+    return { activated: true, newStatus: stripeSub.status };
+  } catch (e) {
+    console.error("[billing-sync] Proactive stripe fetch failed", e);
+    return { activated: false };
+  }
+}
