@@ -962,46 +962,64 @@ export default function ProfilePage() {
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="rounded-2xl border border-red-500/20 bg-red-500/[0.04] backdrop-blur-xl p-7">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-400/60 mb-4">Danger Zone</p>
           <p className="text-sm text-white/40 mb-4">Permanently delete your account and all associated data. This action cannot be undone.</p>
-          {!showDeleteConfirm ? (
-            <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-2 h-10 px-5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-all">
-              <Trash2 className="w-4 h-4" /> Delete My Account
-            </button>
-          ) : (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/[0.05] p-5 space-y-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
+          <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-2 h-10 px-5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-all">
+            <Trash2 className="w-4 h-4" /> Delete My Account
+          </button>
+        </motion.div>
+
+        {/* ── Delete Account Modal ── */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => { setShowDeleteConfirm(false); setDeleteInput(""); }} />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-md rounded-2xl border border-red-500/20 bg-[#121212] p-7 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
                 <div>
-                  <p className="text-sm font-semibold text-red-400 mb-2">This will permanently delete your entire account and all data:</p>
-                  <ul className="text-xs text-white/50 space-y-1.5 list-none">
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span>Your profile, personal info, and account credentials</li>
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span><strong className="text-white/70">Premium subscription</strong> — your active plan will be canceled immediately with Stripe, and all subscription data removed</li>
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span><strong className="text-white/70">HireMindX Assist</strong> — all conversation history, chat sessions, and AI agent state</li>
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span><strong className="text-white/70">Match &amp; Hiring</strong> — hiring positions, candidate CVs, CV analysis results, interview questions, and exam sessions</li>
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span><strong className="text-white/70">Community</strong> — your community profile, messages, direct messages, offers, projects, proposals, and portfolio</li>
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span><strong className="text-white/70">Wallet &amp; Payments</strong> — wallet balance, transaction history, payment methods, and escrow records</li>
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span>Resumes, job applications, job searches, and CV analyses</li>
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span>Leads, email campaigns, and outreach data</li>
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span>Research sessions, predictions, canvas projects, and notifications</li>
-                    <li className="flex items-start gap-2"><span className="text-red-400/70 mt-0.5">•</span>Usage limits and cancellation records</li>
-                  </ul>
-                  <p className="text-xs text-red-400/80 mt-3 font-medium">⚠ This is irreversible. You will not be able to recover any data after deletion.</p>
+                  <p className="text-base font-bold text-white">Delete Account</p>
+                  <p className="text-xs text-white/40">This action is permanent and irreversible.</p>
                 </div>
               </div>
-              <div className="pt-2">
-                <p className="text-sm text-white/50 mb-2">Type <strong className="text-white/80">DELETE</strong> to confirm permanent account deletion.</p>
-                <input value={deleteInput} onChange={e => setDeleteInput(e.target.value)} placeholder="Type DELETE to confirm" className={`${inp} border-red-500/20 focus:border-red-500/40`} />
+
+              <p className="text-sm text-white/60 mb-6 leading-relaxed">
+                All your data will be permanently removed — including your profile, subscription, conversations, community data, wallet, and every record associated with this account.
+              </p>
+
+              <div className="mb-5">
+                <p className="text-sm text-white/50 mb-2">Type <strong className="text-white/80">DELETE</strong> to confirm.</p>
+                <input
+                  value={deleteInput}
+                  onChange={e => setDeleteInput(e.target.value)}
+                  placeholder="Type DELETE to confirm"
+                  className={`${inp} border-red-500/20 focus:border-red-500/40 focus:ring-red-500/10`}
+                />
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => { setShowDeleteConfirm(false); setDeleteInput(""); }} className="flex-1 h-10 rounded-xl border border-white/[0.08] text-sm text-white/50 hover:text-white hover:bg-white/[0.05] transition-all">
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowDeleteConfirm(false); setDeleteInput(""); }}
+                  className="flex-1 h-11 rounded-xl border border-white/[0.08] text-sm text-white/50 hover:text-white hover:bg-white/[0.05] transition-all"
+                >
                   Cancel
                 </button>
-                <button onClick={handleDeleteAccount} disabled={deleteInput !== "DELETE" || isDeleting} className="flex-1 h-10 rounded-xl bg-red-500/80 text-white text-sm font-semibold hover:bg-red-500 disabled:opacity-40 transition-all">
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deleteInput !== "DELETE" || isDeleting}
+                  className="flex-1 h-11 rounded-xl bg-red-500/80 text-white text-sm font-semibold hover:bg-red-500 disabled:opacity-40 transition-all"
+                >
                   {isDeleting ? "Deleting..." : "Permanently Delete"}
                 </button>
               </div>
-            </div>
-          )}
-        </motion.div>
+            </motion.div>
+          </div>
+        )}
 
       </main>
     </div>
