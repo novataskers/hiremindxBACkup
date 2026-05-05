@@ -107,6 +107,42 @@ function getVariantAccent(variant: HireMindXEmailNotificationVariant) {
   }
 }
 
+function getVariantIconSvg(variant: HireMindXEmailNotificationVariant, color: string): string {
+  // Inline SVG icons for email clients that support them
+  const size = 24;
+  switch (variant) {
+    case "message":
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10z" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>`;
+    case "contract_offer":
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <polyline points="14 2 14 8 20 8" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <line x1="16" y1="13" x2="8" y2="13" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="16" y1="17" x2="8" y2="17" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>
+        <polyline points="10 9 9 9 8 9" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>`;
+    case "contract_response":
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <polyline points="14 2 14 8 20 8" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M9 15l2 2 4-4" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>`;
+    case "job_alert":
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+        <rect x="2" y="7" width="20" height="14" rx="2" ry="2" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>`;
+    case "general_notification":
+    default:
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>`;
+  }
+}
+
 function getSiteUrl(): string {
   let url =
     process.env.NEXT_PUBLIC_SITE_URL ||
@@ -172,16 +208,18 @@ export function renderHireMindXEmailTemplate(
         .map(
           (item, index) => `
             <tr>
-              <td style="padding: 16px; color: #888888; font-size: 14px; font-weight: 500; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; border-bottom: ${
-                index !== params.metadata!.length - 1 ? "1px solid #2A2A2A" : "none"
+              <td style="padding: 14px 20px; color: #888888; font-size: 13px; font-weight: 500; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; letter-spacing: 0.3px; text-transform: uppercase; border-bottom: ${
+                index !== params.metadata!.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none"
               };">${escapeHtml(item.label)}</td>
-              <td align="right" style="padding: 16px; color: #FFFFFF; font-size: 15px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; border-bottom: ${
-                index !== params.metadata!.length - 1 ? "1px solid #2A2A2A" : "none"
+              <td align="right" style="padding: 14px 20px; color: #E8E8E8; font-size: 14px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; border-bottom: ${
+                index !== params.metadata!.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none"
               };">${escapeHtml(item.value)}</td>
             </tr>`,
         )
         .join("")
     : "";
+
+  const iconSvg = getVariantIconSvg(params.variant, accent);
 
   const html = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -190,66 +228,83 @@ export function renderHireMindXEmailTemplate(
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(params.subject)}</title>
   <style type="text/css">
-    body { margin: 0; padding: 0; background-color: #050505; -webkit-font-smoothing: antialiased; }
+    body { margin: 0; padding: 0; background-color: #0A0A0A; -webkit-font-smoothing: antialiased; }
     img { border: 0; display: block; outline: none; text-decoration: none; }
     p { margin: 0 0 16px 0; }
     a { color: ${accent}; text-decoration: none; }
     a:hover { text-decoration: underline !important; }
-    .email-container { width: 100%; max-width: 600px; margin: 0 auto; }
+    .email-container { width: 100%; max-width: 560px; margin: 0 auto; }
     @media only screen and (max-width: 600px) {
       .email-container { width: 100% !important; }
-      .content-card { padding: 32px 20px !important; }
-      .header-pad { padding: 40px 20px 30px !important; }
+      .content-card { padding: 36px 24px !important; }
+      .header-pad { padding: 48px 20px 36px !important; }
+      .logo-img { width: 160px !important; }
     }
   </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #050505; color: #E0E0E0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+<body style="margin: 0; padding: 0; background-color: #0A0A0A; color: #E0E0E0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <!-- Preheader text -->
-  <div style="display: none; font-size: 1px; color: #050505; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">
+  <div style="display: none; font-size: 1px; color: #0A0A0A; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">
     ${escapeHtml(previewText)}
   </div>
 
-  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #050505;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #0A0A0A;">
     <tr>
-      <td align="center" style="padding: 20px 0 60px 0;">
-        <table border="0" cellpadding="0" cellspacing="0" class="email-container" style="max-width: 600px; width: 600px; margin: 0 auto;">
+      <td align="center" style="padding: 0 0 64px 0;">
+        <table border="0" cellpadding="0" cellspacing="0" class="email-container" style="max-width: 560px; width: 560px; margin: 0 auto;">
           
-          <!-- Header (Logo) -->
+          <!-- Header (Logo with glow) -->
           <tr>
-            <td align="center" class="header-pad" style="padding: 40px 0 30px 0;">
-              <a href="${escapeHtml(siteUrl)}" style="display: inline-block;">
-                <img src="${escapeHtml(logoUrl)}" alt="HireMindX" width="180" style="width: 180px; max-width: 100%; height: auto; display: block;" />
+            <td align="center" class="header-pad" style="padding: 56px 0 40px 0;">
+              <a href="${escapeHtml(siteUrl)}" style="display: inline-block; text-decoration: none;">
+                <table border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="background: radial-gradient(ellipse 80% 60% at 50% 50%, rgba(212,175,55,0.15) 0%, rgba(10,10,10,0) 70%); padding: 24px 40px;">
+                      <img src="${escapeHtml(logoUrl)}" alt="HireMindX" width="200" class="logo-img" style="width: 200px; max-width: 100%; height: auto; display: block;" />
+                    </td>
+                  </tr>
+                </table>
               </a>
+              <p style="margin: 16px 0 0 0; font-size: 10px; letter-spacing: 0.35em; text-transform: uppercase; color: #555555; font-weight: 600;">Autonomous Intelligence</p>
             </td>
           </tr>
 
           <!-- Main Card -->
           <tr>
-            <td align="center" style="padding: 0 16px;">
-              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #111111; border: 1px solid #222222; border-radius: 12px; overflow: hidden;">
+            <td align="center" style="padding: 0 12px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #121212; border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; overflow: hidden;">
                 <!-- Decorative top border -->
                 <tr>
-                  <td style="background-color: ${accent}; height: 4px; font-size: 0; line-height: 0;">&nbsp;</td>
+                  <td style="background: linear-gradient(90deg, ${accent}80 0%, ${accent} 50%, ${accent}80 100%); height: 3px; font-size: 0; line-height: 0;">&nbsp;</td>
                 </tr>
                 
                 <tr>
-                  <td class="content-card" style="padding: 48px 40px;">
+                  <td class="content-card" style="padding: 40px 36px;">
                     
-                    <h1 style="margin: 0 0 24px 0; font-size: 24px; line-height: 1.3; font-weight: 600; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+                    <!-- Icon Badge -->
+                    <table border="0" cellpadding="0" cellspacing="0" style="margin: 0 0 24px 0;">
+                      <tr>
+                        <td style="background-color: ${accent}18; border: 1px solid ${accent}30; border-radius: 12px; padding: 12px;">
+                          ${iconSvg}
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <h1 style="margin: 0 0 20px 0; font-size: 26px; line-height: 1.2; font-weight: 700; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; letter-spacing: -0.01em;">
                       ${safeTitle}
                     </h1>
 
-                    <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.6; color: #B3B3B3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+                    <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.5; color: #888888; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
                       Hello ${safeRecipientName},
                     </p>
 
-                    <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.6; color: #CCCCCC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+                    <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.7; color: #CCCCCC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
                       ${safeSummary}
                     </p>
 
                     ${
                       metadataHtml
-                        ? `<table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin: 0 0 32px 0; background-color: #1A1A1A; border: 1px solid #2A2A2A; border-radius: 8px;">
+                        ? `<table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin: 0 0 32px 0; background-color: #1A1A1A; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px;">
                       ${metadataHtml}
                     </table>`
                         : ""
@@ -259,11 +314,11 @@ export function renderHireMindXEmailTemplate(
                       ctaUrl && params.ctaLabel
                         ? `<table border="0" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
-                        <td align="center" style="padding-top: 16px;">
+                        <td align="left" style="padding-top: 8px;">
                           <table border="0" cellpadding="0" cellspacing="0">
                             <tr>
-                              <td align="center" bgcolor="${accent}" style="border-radius: 6px;">
-                                <a href="${escapeHtml(ctaUrl)}" target="_blank" style="display: inline-block; padding: 14px 32px; color: #000000; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; letter-spacing: 0.2px;">
+                              <td align="center" bgcolor="${accent}" style="border-radius: 10px;">
+                                <a href="${escapeHtml(ctaUrl)}" target="_blank" style="display: inline-block; padding: 15px 32px; color: #000000; font-size: 15px; font-weight: 700; text-decoration: none; border-radius: 10px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; letter-spacing: 0.3px;">
                                   ${escapeHtml(params.ctaLabel)}
                                 </a>
                               </td>
@@ -283,16 +338,20 @@ export function renderHireMindXEmailTemplate(
 
           <!-- Footer -->
           <tr>
-            <td align="center" style="padding: 32px 16px 0 16px;">
-              <p style="margin: 0 0 12px 0; font-size: 14px; color: #666666; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
-                Sent securely by <strong style="color: #888888; font-weight: 600;">HireMindX</strong>
-              </p>
-              <p style="margin: 0; font-size: 12px; line-height: 1.6; color: #555555; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
-                &copy; ${new Date().getFullYear()} Atlas Infrastructure Group.<br/>
-                This is an automated notification. Please do not reply to this email.<br/>
-                <br/>
-                <a href="${escapeHtml(siteUrl)}" style="color: ${accent}; text-decoration: none;">Visit HireMindX</a> &bull; <a href="mailto:${escapeHtml(config.fromEmail)}" style="color: #555555; text-decoration: underline;">Contact Support</a>
-              </p>
+            <td align="center" style="padding: 40px 20px 0 20px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 28px;">
+                <tr>
+                  <td align="center">
+                    <p style="margin: 0 0 8px 0; font-size: 13px; color: #555555; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+                      <strong style="color: #777777; font-weight: 600;">HireMindX</strong> &mdash; Autonomous Intelligence for Professionals
+                    </p>
+                    <p style="margin: 0; font-size: 11px; line-height: 1.7; color: #444444; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+                      &copy; ${new Date().getFullYear()} Atlas Infrastructure Group. Automated notification.<br/>
+                      <a href="${escapeHtml(siteUrl)}" style="color: ${accent}; text-decoration: none;">Visit HireMindX</a> <span style="color: #333333;">&middot;</span> <a href="mailto:${escapeHtml(config.fromEmail)}" style="color: #555555; text-decoration: underline;">Support</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
