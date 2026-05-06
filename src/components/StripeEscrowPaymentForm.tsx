@@ -291,7 +291,7 @@ function PaymentFormInner({
         ) : (
           <>
             <CreditCard className="w-4 h-4" /> Pay £
-            {(amount + 10).toFixed(2)} & Accept Contract
+            {(amount * 1.1).toFixed(2)} & Accept Contract
           </>
         )}
       </button>

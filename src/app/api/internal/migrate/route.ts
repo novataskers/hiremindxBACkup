@@ -40,7 +40,7 @@ export async function POST() {
       client_id TEXT NOT NULL,
       freelancer_id TEXT NOT NULL,
       contract_amount INTEGER NOT NULL,
-      platform_fee INTEGER NOT NULL DEFAULT 1000,
+      platform_fee INTEGER NOT NULL DEFAULT 0,
       total_charged INTEGER NOT NULL,
       currency TEXT NOT NULL DEFAULT 'GBP',
       status TEXT NOT NULL DEFAULT 'pending',

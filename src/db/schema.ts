@@ -516,7 +516,7 @@ export const escrowTransactions = sqliteTable('escrow_transactions', {
   clientId: text('client_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   freelancerId: text('freelancer_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   contractAmount: integer('contract_amount').notNull(), // in pence/cents
-  platformFee: integer('platform_fee').notNull().default(1000), // £10 = 1000 pence
+  platformFee: integer('platform_fee').notNull().default(0), // 10% of contract amount, set dynamically by code
   totalCharged: integer('total_charged').notNull(), // contractAmount + platformFee
   currency: text('currency').notNull().default('GBP'),
   status: text('status').notNull().default('pending'), // pending, funded, released, completed, cancelled, refunded

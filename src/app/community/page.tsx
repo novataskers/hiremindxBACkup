@@ -1541,7 +1541,7 @@ export default function CommunityPage() {
           userId: activeConversation.partnerId,
           type: "contract_accepted_pending_payment",
           title: "Freelancer Accepted Your Contract!",
-          message: `${session.user.name || "The freelancer"} accepted your contract "${escrowContract.title}". Please proceed to pay £${escrowContract.amount} + £10 platform fee to fund the escrow.`,
+          message: `${session.user.name || "The freelancer"} accepted your contract "${escrowContract.title}". Please proceed to pay £${escrowContract.amount} + 10% platform fee (total £${(Number(escrowContract.amount) * 1.1).toFixed(2)}) to fund the escrow.`,
         }),
       }).catch(() => {});
 
@@ -4325,8 +4325,8 @@ export default function CommunityPage() {
                   </div>
                   <div className="text-[11px] text-white/50 leading-relaxed space-y-1.5 pl-6">
                     <p>• You can cancel within <strong className="text-white/70">12 hours</strong> for a full refund with no penalties.</p>
-                    <p>• After 12 hours: The <strong className="text-amber-300">£10 platform fee</strong> will be charged and kept.</p>
-                    <p>• <strong className="text-red-400">2nd late cancellation:</strong> Double platform fee (£20) charged + <strong className="text-red-400">permanent ban</strong> from the community.</p>
+                    <p>• After 12 hours: The <strong className="text-amber-300">10% platform fee</strong> will be charged and kept.</p>
+                    <p>• <strong className="text-red-400">2nd late cancellation:</strong> Double platform fee (20% of contract amount) charged + <strong className="text-red-400">permanent ban</strong> from the community.</p>
                   </div>
                 </div>
               </div>
@@ -4397,7 +4397,7 @@ export default function CommunityPage() {
                   </div>
                   <div className="text-[11px] text-white/50 leading-relaxed space-y-1.5 pl-6">
                     <p>• You can cancel within <strong className="text-white/70">12 hours</strong> with no penalties.</p>
-                    <p>• After 12 hours: The <strong className="text-amber-300">£10 platform fee</strong> will be deducted from your next contract earnings.</p>
+                    <p>• After 12 hours: The <strong className="text-amber-300">10% platform fee</strong> will be deducted from your next contract earnings.</p>
                     <p>• <strong className="text-red-400">2nd late cancellation:</strong> You will be <strong className="text-red-400">permanently banned</strong> from the community.</p>
                   </div>
                 </div>

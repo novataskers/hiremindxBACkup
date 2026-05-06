@@ -14,7 +14,6 @@ function buildAuthHeaders(req: NextRequest) {
   return h;
 }
 
-const PLATFORM_FEE_PENCE = 1000; // £10
 const GRACE_PERIOD_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 // GET — fetch escrow transactions for the current user
@@ -95,7 +94,8 @@ export async function POST(req: NextRequest) {
         }
 
         const amountPence = Math.round(Number(contractAmount) * 100);
-        const totalCharged = amountPence + PLATFORM_FEE_PENCE;
+        const platformFee = Math.round(amountPence * 0.1); // 10% platform fee
+        const totalCharged = amountPence + platformFee;
         const now = new Date().toISOString();
         const stripe = getStripeClient();
 
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
               clientId: session.user.id,
               freelancerId,
               contractAmount: String(amountPence),
-              platformFee: String(PLATFORM_FEE_PENCE),
+              platformFee: String(platformFee),
               type: "escrow_fund",
             },
             description: `Escrow funding for contract ${contractId}`,
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
           clientId: session.user.id,
           freelancerId,
           contractAmount: amountPence,
-          platformFee: PLATFORM_FEE_PENCE,
+          platformFee,
           totalCharged,
           status: paymentIntent.status === "succeeded" ? "funded" : "pending",
           paymentMethodId: paymentMethodId || null,
@@ -319,7 +319,7 @@ export async function POST(req: NextRequest) {
             } else {
               penaltyApplied = "double_fee";
               isBanned = true;
-              refundAmount = Math.max(0, escrow.contractAmount - PLATFORM_FEE_PENCE); // Double fee
+              refundAmount = Math.max(0, escrow.contractAmount - escrow.platformFee); // Double fee (20% total)
             }
           } else {
             // Freelancer
