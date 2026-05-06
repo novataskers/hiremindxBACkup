@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { resetOnboarding } from "@/lib/onboarding";
 import { authClient } from "@/lib/auth-client";
 import { motion } from "framer-motion";
 
@@ -241,6 +242,7 @@ export default function Settings(): JSX.Element {
       }
 
       toast.success("Account deleted successfully");
+      resetOnboarding();
       await authClient.signOut();
       localStorage.removeItem("bearer_token");
       router.push("/");

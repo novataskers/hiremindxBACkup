@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
+import { resetOnboarding } from "@/lib/onboarding";
 import { HeroBackground } from "@/components/HeroBackground";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -407,6 +408,7 @@ export default function ProfilePage() {
       const response = await fetch("/api/user/delete", { method: "DELETE", credentials: "include" });
       if (!response.ok) throw new Error("Failed to delete account");
       toast.success("Account deleted successfully");
+      resetOnboarding();
       localStorage.removeItem("bearer_token");
       localStorage.removeItem("hiremindx_tour_seen");
       await authClient.signOut();

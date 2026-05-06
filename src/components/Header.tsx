@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useSession, authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
+import { resetOnboarding } from "@/lib/onboarding";
 import { LogOut, Crown, Trash2, Palette } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -85,6 +86,7 @@ export default function Header() {
         throw new Error("Failed to delete account");
       }
 
+        resetOnboarding();
         localStorage.removeItem("bearer_token");
         localStorage.removeItem("devSession");
         localStorage.removeItem("hiremindx_tour_seen");
