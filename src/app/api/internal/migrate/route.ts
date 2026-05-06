@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@libsql/client";
 
-export async function POST(req: NextRequest) {
-  const secret = req.headers.get("x-migrate-secret");
-  if (secret !== "hiremindx-2026") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export async function POST() {
   const rawUrl = process.env.TURSO_CONNECTION_URL || "";
   const url = rawUrl.replace(/^libsql:\/\//, "https://");
   const client = createClient({
