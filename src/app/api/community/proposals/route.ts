@@ -3,12 +3,20 @@ import { db } from "@/db";
 import { proposals, clientProjects, communityProfiles } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+
+function buildAuthHeaders(req: NextRequest) {
+  const h = new Headers(req.headers);
+  const cookie = req.headers.get("cookie");
+  if (cookie) h.set("cookie", cookie);
+  const authz = req.headers.get("authorization");
+  if (authz) h.set("authorization", authz);
+  return h;
+}
 
 export async function GET(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: buildAuthHeaders(request),
     });
 
     if (!session?.user?.id) {
@@ -74,7 +82,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: buildAuthHeaders(request),
     });
 
     if (!session?.user?.id) {
@@ -84,52 +92,35 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { projectId, coverLetter, bidAmount, deliveryDays } = body;
 
-    if (!projectId || !coverLetter || !bidAmount || !deliveryDays) {
+    if (!projectId || !coverLetter) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Check if already submitted a proposal for this project
     const existing = await db
       .select()
       .from(proposals)
-      .where(
-        and(
-          eq(proposals.projectId, projectId),
-          eq(proposals.userId, session.user.id)
-        )
-      )
+      .where(and(eq(proposals.projectId, projectId), eq(proposals.userId, session.user.id)))
       .get();
 
     if (existing) {
-      return NextResponse.json({ error: "You have already submitted a proposal for this project" }, { status: 409 });
+      return NextResponse.json({ error: "You have already submitted a proposal for this project" }, { status: 400 });
     }
 
-    const now = new Date().toISOString();
-
-    const result = await db
+    const newProposal = await db
       .insert(proposals)
       .values({
         projectId,
         userId: session.user.id,
         coverLetter,
-        bidAmount,
-        deliveryDays: parseInt(deliveryDays),
+        bidAmount: bidAmount || "",
+        deliveryDays: (deliveryDays ? parseInt(String(deliveryDays)) : 7) as number,
         status: "pending",
-        createdAt: now,
-        updatedAt: now,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       })
       .returning();
 
-    // Increment proposals count on the project
-    await db
-      .update(clientProjects)
-      .set({
-        proposals: sql`${clientProjects.proposals} + 1`,
-        updatedAt: now,
-      })
-      .where(eq(clientProjects.id, projectId));
-
-    return NextResponse.json({ proposal: result[0] }, { status: 201 });
+    return NextResponse.json({ proposal: newProposal[0] }, { status: 201 });
   } catch (error) {
     console.error("Error creating proposal:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -139,7 +130,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: buildAuthHeaders(request),
     });
 
     if (!session?.user?.id) {

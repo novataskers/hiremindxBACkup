@@ -3,7 +3,15 @@ import { db } from "@/db";
 import { communityProfiles, freelancerPortfolio, user } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+
+function buildAuthHeaders(req: NextRequest) {
+  const h = new Headers(req.headers);
+  const cookie = req.headers.get("cookie");
+  if (cookie) h.set("cookie", cookie);
+  const authz = req.headers.get("authorization");
+  if (authz) h.set("authorization", authz);
+  return h;
+}
 
 function safeJsonParse(value: unknown) {
   if (typeof value !== "string") return value ?? null;
@@ -85,7 +93,7 @@ function normalizeProfile(profile: any, account?: any, portfolioItems: any[] = [
 export async function GET(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: buildAuthHeaders(request),
     });
 
     if (!session?.user?.id) {
@@ -163,7 +171,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: buildAuthHeaders(request),
     });
 
     if (!session?.user?.id) {

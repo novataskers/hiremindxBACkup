@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -239,13 +240,17 @@ export function CommunityOnboardingModal({
       }
 
       if (response.ok) {
-          setStep("complete");
-          setTimeout(() => {
-            onComplete(userType as "freelancer" | "client");
-          }, 1500);
-        }
+        setStep("complete");
+        setTimeout(() => {
+          onComplete(userType as "freelancer" | "client");
+        }, 1500);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        toast.error(data?.error || "Failed to save profile. Please try again.");
+      }
     } catch (error) {
       console.error("Error saving profile:", error);
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

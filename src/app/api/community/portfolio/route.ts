@@ -3,12 +3,20 @@ import { db } from "@/db";
 import { freelancerPortfolio } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+
+function buildAuthHeaders(req: NextRequest) {
+  const h = new Headers(req.headers);
+  const cookie = req.headers.get("cookie");
+  if (cookie) h.set("cookie", cookie);
+  const authz = req.headers.get("authorization");
+  if (authz) h.set("authorization", authz);
+  return h;
+}
 
 export async function GET(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: buildAuthHeaders(request),
     });
 
     if (!session?.user?.id) {
@@ -34,7 +42,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: buildAuthHeaders(request),
     });
 
     if (!session?.user?.id) {
@@ -75,7 +83,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: buildAuthHeaders(request),
     });
 
     if (!session?.user?.id) {
