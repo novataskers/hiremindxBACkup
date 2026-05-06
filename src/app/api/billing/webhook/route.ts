@@ -21,6 +21,32 @@ function toDate(unixSeconds: number | null | undefined): Date | null {
   return new Date(unixSeconds * 1000);
 }
 
+/** Extract current_period_start from a Stripe Subscription (SDK v19+ moved these to items.data[0]) */
+function getSubscriptionPeriodStart(sub: Stripe.Subscription): number | null {
+  const item = sub.items?.data?.[0];
+  if (item && typeof (item as any).current_period_start === "number") {
+    return (item as any).current_period_start;
+  }
+  // Fallback for older SDK or edge case
+  if (typeof (sub as any).current_period_start === "number") {
+    return (sub as any).current_period_start;
+  }
+  return null;
+}
+
+/** Extract current_period_end from a Stripe Subscription (SDK v19+ moved these to items.data[0]) */
+function getSubscriptionPeriodEnd(sub: Stripe.Subscription): number | null {
+  const item = sub.items?.data?.[0];
+  if (item && typeof (item as any).current_period_end === "number") {
+    return (item as any).current_period_end;
+  }
+  // Fallback for older SDK or edge case
+  if (typeof (sub as any).current_period_end === "number") {
+    return (sub as any).current_period_end;
+  }
+  return null;
+}
+
 function getWebhookSecret(): string {
   const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
 
@@ -171,8 +197,8 @@ async function syncStripeSubscription({
     stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : null,
     stripeSubscriptionId: stripeSubscription.id,
     stripeCheckoutSessionId: stripeCheckoutSessionId ?? null,
-    currentPeriodStart: toDate((stripeSubscription as any).current_period_start),
-    currentPeriodEnd: toDate((stripeSubscription as any).current_period_end),
+    currentPeriodStart: toDate(getSubscriptionPeriodStart(stripeSubscription)),
+    currentPeriodEnd: toDate(getSubscriptionPeriodEnd(stripeSubscription)),
     cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
     metadata: {
       stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : null,
@@ -300,8 +326,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : null,
           stripeSubscriptionId: stripeSubscription.id,
           stripeCheckoutSessionId: stripeSubscription.metadata?.checkoutSessionId ?? null,
-          currentPeriodStart: toDate((stripeSubscription as any).current_period_start),
-          currentPeriodEnd: toDate((stripeSubscription as any).current_period_end ?? (stripeSubscription as any).canceled_at),
+          currentPeriodStart: toDate(getSubscriptionPeriodStart(stripeSubscription)),
+          currentPeriodEnd: toDate(getSubscriptionPeriodEnd(stripeSubscription) ?? (stripeSubscription as any).canceled_at),
           cancelAtPeriodEnd: false,
           metadata: {
             stripeCustomerId: typeof stripeSubscription.customer === "string" ? stripeSubscription.customer : null,

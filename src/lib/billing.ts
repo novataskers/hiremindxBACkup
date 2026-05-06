@@ -192,13 +192,16 @@ export async function syncPendingSubscription(
     }
 
     console.log("[syncPending] Activating subscription with status:", stripeSub.status);
+    const item = stripeSub.items?.data?.[0];
+    const periodStart = (item as any)?.current_period_start ?? (stripeSub as any).current_period_start;
+    const periodEnd = (item as any)?.current_period_end ?? (stripeSub as any).current_period_end;
     await db
       .update(subscriptions)
       .set({
         status: stripeSub.status,
         stripeSubscriptionId: stripeSub.id,
-        currentPeriodStart: new Date((stripeSub as any).current_period_start * 1000),
-        currentPeriodEnd: new Date((stripeSub as any).current_period_end * 1000),
+        currentPeriodStart: typeof periodStart === "number" ? new Date(periodStart * 1000) : null,
+        currentPeriodEnd: typeof periodEnd === "number" ? new Date(periodEnd * 1000) : null,
         cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
         updatedAt: new Date(),
       })
