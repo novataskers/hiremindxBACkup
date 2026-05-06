@@ -2,9 +2,10 @@ import Stripe from "stripe";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { subscriptions } from "@/db/schema";
+import { subscriptions, user } from "@/db/schema";
 import { getBillingPlan } from "@/lib/billing";
 import { getStripeClient } from "@/lib/stripe";
+import { sendHireMindXEmailNotification } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +46,80 @@ function getSubscriptionPeriodEnd(sub: Stripe.Subscription): number | null {
     return (sub as any).current_period_end;
   }
   return null;
+}
+
+async function sendSubscriptionActivatedEmail(userId: string, planName: string, renewalDate: string | null) {
+  try {
+    const userRows = await db.select({ email: user.email, name: user.name }).from(user).where(eq(user.id, userId)).limit(1);
+    const u = userRows[0];
+    if (!u?.email) return;
+
+    const dateStr = renewalDate
+      ? new Date(renewalDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+      : "your next billing cycle";
+
+    await sendHireMindXEmailNotification({
+      to: u.email,
+      subject: `Your ${planName} Plan is now active — Welcome to HireMindX Premium`,
+      variant: "subscription_activated",
+      title: `${planName} Plan Activated`,
+      summary: `Welcome to HireMindX Premium! Your ${planName} Plan has been successfully activated. You now have access to all the features included in your plan. Your subscription renews on ${dateStr}.`,
+      previewText: `Your ${planName} Plan is now active. Explore your premium features.`,
+      recipientName: u.name || "there",
+      ctaLabel: "Explore Premium",
+      ctaUrl: "/premium",
+      metadata: [
+        { label: "Plan", value: planName },
+        { label: "Renews On", value: dateStr },
+      ],
+    });
+  } catch (e) {
+    console.error("[stripe-webhook] Failed to send activation email:", e);
+  }
+}
+
+async function sendSubscriptionCanceledEmail(userId: string, planName: string, isRefunded: boolean, endDate: string | null) {
+  try {
+    const userRows = await db.select({ email: user.email, name: user.name }).from(user).where(eq(user.id, userId)).limit(1);
+    const u = userRows[0];
+    if (!u?.email) return;
+
+    const dateStr = endDate
+      ? new Date(endDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+      : "soon";
+
+    if (isRefunded) {
+      await sendHireMindXEmailNotification({
+        to: u.email,
+        subject: "Your HireMindX subscription has been canceled — Refund processing",
+        variant: "subscription_canceled",
+        title: "Subscription Canceled",
+        summary: `Your ${planName} Plan has been canceled. Since you are within the 14-day money-back guarantee period, a full refund of GBP ${planName} has been initiated. The funds will be returned to your account within 48 hours.`,
+        previewText: "Your subscription has been canceled and a refund is being processed.",
+        recipientName: u.name || "there",
+        metadata: [
+          { label: "Plan", value: planName },
+          { label: "Refund", value: "Full refund within 48 hours" },
+        ],
+      });
+    } else {
+      await sendHireMindXEmailNotification({
+        to: u.email,
+        subject: "Your HireMindX subscription has been canceled",
+        variant: "subscription_canceled",
+        title: "Subscription Canceled",
+        summary: `Your ${planName} Plan has been canceled. You will continue to have access to all premium features until ${dateStr}. After that date, your account will revert to the Free plan.`,
+        previewText: `Your subscription is active until ${dateStr}.`,
+        recipientName: u.name || "there",
+        metadata: [
+          { label: "Plan", value: planName },
+          { label: "Active Until", value: dateStr },
+        ],
+      });
+    }
+  } catch (e) {
+    console.error("[stripe-webhook] Failed to send cancellation email:", e);
+  }
 }
 
 function getWebhookSecret(): string {
@@ -273,6 +348,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           stripeCheckoutSessionId: session.id,
         });
         console.log("[stripe-webhook] subscription synced successfully for userId:", userId);
+
+        // Send activation email if subscription is active
+        if (stripeSubscription.status === "active" || stripeSubscription.status === "trialing") {
+          const planId = stripeSubscription.metadata?.planId;
+          const plan = getBillingPlan(planId);
+          const periodEnd = getSubscriptionPeriodEnd(stripeSubscription);
+          await sendSubscriptionActivatedEmail(
+            userId,
+            plan?.name ?? "Premium",
+            periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+          );
+        }
         break;
       }
 

@@ -6,7 +6,9 @@ export type HireMindXEmailNotificationVariant =
   | "contract_response"
   | "contract_declined"
   | "general_notification"
-  | "job_alert";
+  | "job_alert"
+  | "subscription_activated"
+  | "subscription_canceled";
 
 export interface HireMindXEmailNotificationMetadataItem {
   label: string;
@@ -104,6 +106,10 @@ function getVariantAccent(variant: HireMindXEmailNotificationVariant) {
       return "#EF4444"; // Red
     case "job_alert":
       return "#F472B6"; // Pink
+    case "subscription_activated":
+      return "#10B981"; // Emerald
+    case "subscription_canceled":
+      return "#EF4444"; // Red
     case "general_notification":
     default:
       return "#D4AF37";
@@ -143,6 +149,17 @@ function getVariantIconSvg(variant: HireMindXEmailNotificationVariant, color: st
       return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
         <rect x="2" y="7" width="20" height="14" rx="2" ry="2" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>`;
+    case "subscription_activated":
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <polyline points="22 4 12 14.01 9 11.01" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>`;
+    case "subscription_canceled":
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+        <circle cx="12" cy="12" r="10" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <line x1="15" y1="9" x2="9" y2="15" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="9" y1="9" x2="15" y2="15" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>`;
     case "general_notification":
     default:
