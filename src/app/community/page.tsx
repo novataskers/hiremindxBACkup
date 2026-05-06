@@ -2111,7 +2111,7 @@ export default function CommunityPage() {
         </button>
       </div>
 
-      <div className="fixed inset-0 pt-[72px] flex overflow-hidden">
+      <div data-tour="community-feed" className="fixed inset-0 pt-[72px] flex overflow-hidden">
         <div className="w-80 shrink-0 flex flex-col m-4 mr-0 rounded-[2.5rem] border border-white/[0.08] bg-[#0a0a0a]/70 backdrop-blur-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.6)] relative group transition-all duration-500 hover:border-white/20">
           <div className="absolute top-0 left-10 right-10 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent z-10" />
           

@@ -1407,7 +1407,7 @@ export default function AssistPage() {
             </div>
             ) : showWelcome ? (
               /* Welcome screen */
-              <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center px-3 sm:px-4 py-4 sm:py-12">
+              <div data-tour="assist-welcome" className="flex-1 overflow-y-auto flex flex-col items-center justify-center px-3 sm:px-4 py-4 sm:py-12">
                 <div className="max-w-2xl w-full text-center space-y-4 sm:space-y-8">
                   {/* Icon + Title */}
                   <div className="flex flex-col items-center gap-2 sm:gap-4" style={{ animation: 'fadeInUp 0.5s ease forwards' }}>
@@ -1731,6 +1731,7 @@ export default function AssistPage() {
                   />
                     <div className="relative flex items-end rounded-3xl border transition-all duration-300 bg-[#0a0a0a] border-zinc-800 focus-within:border-zinc-700">
                         <button
+                          data-tour="assist-attach"
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
                           disabled={isLoading || isUploading}
@@ -1741,6 +1742,7 @@ export default function AssistPage() {
                         </button>
 
                         <textarea
+                          data-tour="assist-input"
                           ref={textareaRef}
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
@@ -1754,6 +1756,7 @@ export default function AssistPage() {
 
                         <div className="flex items-center gap-0.5 p-2">
                           <button
+                            data-tour="assist-voice"
                             type="button"
                             onClick={toggleListening}
                             disabled={isLoading}

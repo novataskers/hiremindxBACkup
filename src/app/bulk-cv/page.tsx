@@ -355,7 +355,7 @@ export default function BulkCVPage() {
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] text-white/70 text-sm cursor-pointer transition-all">
+                      <label data-tour="bulkcv-upload" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] text-white/70 text-sm cursor-pointer transition-all">
                         <Upload className="w-4 h-4" />
                         {isUploading ? <><Loader2 className="w-4 h-4 animate-spin" />Uploading...</> : "Upload CVs"}
                         <input type="file" multiple accept=".pdf" onChange={handleFileUpload} className="hidden" disabled={isUploading} />
@@ -459,7 +459,7 @@ export default function BulkCVPage() {
                                             </button>
                                           ))}
                                         </div>
-                                        <button onClick={() => handleGenerateQuestions(c)} disabled={isGenerating}
+                                        <button data-tour="bulkcv-questions" onClick={() => handleGenerateQuestions(c)} disabled={isGenerating}
                                           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 text-white text-sm font-bold hover:from-purple-500 hover:to-violet-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/20">
                                           {isGenerating ? (
                                             <><Loader2 className="w-4 h-4 animate-spin" />Generating Questions...</>
