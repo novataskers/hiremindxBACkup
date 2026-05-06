@@ -246,7 +246,7 @@ export function CommunityOnboardingModal({
         }, 1500);
       } else {
         const data = await response.json().catch(() => ({}));
-        toast.error(data?.error || "Failed to save profile. Please try again.");
+        toast.error(data?.detail || data?.error || "Failed to save profile. Please try again.");
       }
     } catch (error) {
       console.error("Error saving profile:", error);

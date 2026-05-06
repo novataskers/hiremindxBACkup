@@ -235,8 +235,11 @@ export async function POST(request: NextRequest) {
       .returning();
 
     return NextResponse.json({ profile: newProfile[0] }, { status: 201 });
-  } catch (error) {
-    console.error("Error saving community profile:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  } catch (error: any) {
+    console.error("[profile POST] Error saving community profile:", error);
+    return NextResponse.json(
+      { error: "Internal server error", detail: error?.message || String(error) },
+      { status: 500 }
+    );
   }
 }
