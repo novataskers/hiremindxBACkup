@@ -23,6 +23,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/auth-client";
 import { CommunityOnboardingModal } from "@/components/CommunityOnboardingModal";
+import StripeEscrowPaymentForm from "@/components/StripeEscrowPaymentForm";
+import StripeConnectButton from "@/components/StripeConnectButton";
 
 const CATEGORIES = [
   { id: "all", name: "All Categories", icon: LayoutGrid },
@@ -245,6 +247,7 @@ export default function CommunityPage() {
   const [showAddPaymentMethod, setShowAddPaymentMethod] = useState(false);
   const [newPaymentMethodType, setNewPaymentMethodType] = useState("");
   const [newPaymentMethodDetails, setNewPaymentMethodDetails] = useState({ cardNumber: "", expiry: "", cvv: "", name: "", email: "", accountId: "" });
+  const [stripeConnectStatus, setStripeConnectStatus] = useState<any>(null);
   const [releasingContractId, setReleasingContractId] = useState<string | null>(null);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<string | null>(null);
 
@@ -491,13 +494,33 @@ export default function CommunityPage() {
     setActiveTab(type === "freelancer" ? "projects" : "offers");
   };
 
+  // Fetch Stripe Connect status for freelancers
+  const fetchStripeConnectStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/community/stripe/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "status" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStripeConnectStatus(data);
+      }
+    } catch (error) {
+      console.error("Error fetching Stripe Connect status:", error);
+    }
+  }, []);
+
   useEffect(() => {
     if (!hasProfile) return;
-    if (userType === "freelancer" && dbProjects.length === 0) {
-      fetch("/api/community/projects")
-        .then((r) => r.json())
-        .then((data) => { if (data.projects) setDbProjects(data.projects); })
-        .catch(console.error);
+    if (userType === "freelancer") {
+      fetchStripeConnectStatus();
+      if (dbProjects.length === 0) {
+        fetch("/api/community/projects")
+          .then((r) => r.json())
+          .then((data) => { if (data.projects) setDbProjects(data.projects); })
+          .catch(console.error);
+      }
     }
     if (userType === "client" && offers.length === 0) {
       fetch("/api/community/offers")
@@ -505,7 +528,7 @@ export default function CommunityPage() {
         .then((data) => { if (data.offers) setOffers(data.offers); })
         .catch(console.error);
     }
-  }, [hasProfile, userType]);
+  }, [hasProfile, userType, fetchStripeConnectStatus]);
 
   useEffect(() => {
     if (activeTab === "freelancers" && freelancers.length === 0) {
@@ -1376,11 +1399,16 @@ export default function CommunityPage() {
       if (userType === "client") {
         // Client is accepting — show payment modal with escrow
         setShowEscrowModal(true);
-        // Load payment methods
+        // Load saved Stripe payment methods
         try {
-          const res = await fetch("/api/community/payment-methods");
+          const res = await fetch("/api/community/payment-methods/stripe");
           const data = await res.json();
-          if (data.paymentMethods) setSavedPaymentMethods(data.paymentMethods);
+          if (data.paymentMethods) {
+            setSavedPaymentMethods(data.paymentMethods);
+            if (data.paymentMethods.length > 0) {
+              setSelectedPaymentMethod(data.paymentMethods[0].id);
+            }
+          }
         } catch {}
       } else {
         // Freelancer is accepting — show info modal
@@ -2130,6 +2158,29 @@ export default function CommunityPage() {
             />
           ) : (
             <div className="flex flex-col h-full bg-[#0a0a0a]/90 relative z-20">
+              {/* Stripe Connect Onboarding Banner */}
+              {(!stripeConnectStatus?.connected || !stripeConnectStatus?.isOnboarded) && (
+                <div className="p-4 border-b border-white/[0.08] bg-amber-500/[0.06]">
+                  <p className="text-[11px] text-amber-300 mb-2 leading-relaxed">
+                    {!stripeConnectStatus?.connected
+                      ? "Connect your Stripe account to receive payments from clients."
+                      : "Complete your Stripe onboarding to start receiving payouts."}
+                  </p>
+                  <StripeConnectButton
+                    accountStatus={stripeConnectStatus}
+                    onStatusChange={fetchStripeConnectStatus}
+                    variant="default"
+                  />
+                </div>
+              )}
+              {stripeConnectStatus?.connected && stripeConnectStatus?.isOnboarded && (
+                <div className="px-4 py-2 border-b border-emerald-500/10 bg-emerald-500/[0.04]">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span className="text-[11px] text-emerald-400 font-medium">Payouts connected</span>
+                  </div>
+                </div>
+              )}
               <div className="p-5 border-b border-white/[0.08] sticky top-0 bg-[#0a0a0a]/95 backdrop-blur-md z-30">
                 <h2 className="text-sm font-black uppercase tracking-widest text-white/80 mb-4 flex items-center gap-2">
                   <Target className="w-4 h-4 text-[#22c55e]" /> Nearby Jobs
@@ -4290,131 +4341,26 @@ export default function CommunityPage() {
                 </div>
 
                 {/* Payment Method Selection */}
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30 mb-3">Payment Method</p>
-                  
-                  {savedPaymentMethods.length > 0 && !showAddPaymentMethod && (
-                    <div className="space-y-2 mb-3">
-                      {savedPaymentMethods.map((pm: any) => (
-                        <button
-                          key={pm.id}
-                          onClick={() => setSelectedPaymentMethod(pm.id)}
-                          className={`w-full flex items-center gap-3 p-3.5 rounded-xl border transition-all text-left ${
-                            selectedPaymentMethod === pm.id
-                              ? "border-emerald-500/30 bg-emerald-500/10"
-                              : "border-white/[0.08] bg-white/[0.03] hover:border-white/20"
-                          }`}
-                        >
-                          <CreditCard className={`w-4 h-4 ${selectedPaymentMethod === pm.id ? "text-emerald-400" : "text-white/40"}`} />
-                          <span className={`text-sm ${selectedPaymentMethod === pm.id ? "text-white font-semibold" : "text-white/60"}`}>{pm.label}</span>
-                          {selectedPaymentMethod === pm.id && <Check className="w-4 h-4 text-emerald-400 ml-auto" />}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {!showAddPaymentMethod ? (
-                    <button
-                      onClick={() => setShowAddPaymentMethod(true)}
-                      className="w-full flex items-center justify-center gap-2 h-11 rounded-xl border border-dashed border-white/[0.12] bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04] transition-all text-xs font-semibold text-white/50"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add Payment Method
-                    </button>
-                  ) : (
-                    <div className="rounded-2xl border border-white/[0.1] bg-white/[0.03] p-5 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-white">Add Payment Method</p>
-                        <button onClick={() => setShowAddPaymentMethod(false)} className="text-[11px] text-white/40 hover:text-white">Cancel</button>
-                      </div>
-
-                      {/* Type selector */}
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { value: "debit_card", label: "Debit Card", icon: CreditCard },
-                          { value: "credit_card", label: "Credit Card", icon: CreditCard },
-                          { value: "paypal", label: "PayPal", icon: Wallet },
-                          { value: "wise", label: "Wise", icon: Globe },
-                          { value: "payoneer", label: "Payoneer", icon: Banknote },
-                          { value: "bank_swift", label: "SWIFT", icon: Building2 },
-                        ].map(({ value, label, icon: Icon }) => (
-                          <button
-                            key={value}
-                            onClick={() => setNewPaymentMethodType(value)}
-                            className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-center ${
-                              newPaymentMethodType === value
-                                ? "border-[#f5c518]/30 bg-[#f5c518]/10 text-[#f5c518]"
-                                : "border-white/[0.08] bg-white/[0.02] text-white/40 hover:border-white/15"
-                            }`}
-                          >
-                            <Icon className="w-4 h-4" />
-                            <span className="text-[10px] font-semibold">{label}</span>
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Card fields */}
-                      {(newPaymentMethodType === "debit_card" || newPaymentMethodType === "credit_card") && (
-                        <div className="space-y-3">
-                          <Input
-                            placeholder="Card Number"
-                            value={newPaymentMethodDetails.cardNumber}
-                            onChange={(e) => setNewPaymentMethodDetails((prev) => ({ ...prev, cardNumber: e.target.value.replace(/\D/g, "").slice(0, 16) }))}
-                            className="h-11 bg-white/[0.05] border-white/[0.08] text-white text-sm rounded-xl"
-                          />
-                          <div className="grid grid-cols-2 gap-3">
-                            <Input
-                              placeholder="MM/YY"
-                              value={newPaymentMethodDetails.expiry}
-                              onChange={(e) => setNewPaymentMethodDetails((prev) => ({ ...prev, expiry: e.target.value }))}
-                              className="h-11 bg-white/[0.05] border-white/[0.08] text-white text-sm rounded-xl"
-                            />
-                            <Input
-                              placeholder="CVV"
-                              value={newPaymentMethodDetails.cvv}
-                              onChange={(e) => setNewPaymentMethodDetails((prev) => ({ ...prev, cvv: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
-                              className="h-11 bg-white/[0.05] border-white/[0.08] text-white text-sm rounded-xl"
-                            />
-                          </div>
-                          <Input
-                            placeholder="Cardholder Name"
-                            value={newPaymentMethodDetails.name}
-                            onChange={(e) => setNewPaymentMethodDetails((prev) => ({ ...prev, name: e.target.value }))}
-                            className="h-11 bg-white/[0.05] border-white/[0.08] text-white text-sm rounded-xl"
-                          />
-                        </div>
-                      )}
-
-                      {/* Email-based fields (PayPal, Wise) */}
-                      {(newPaymentMethodType === "paypal" || newPaymentMethodType === "wise") && (
-                        <Input
-                          placeholder={`${newPaymentMethodType === "paypal" ? "PayPal" : "Wise"} Email`}
-                          value={newPaymentMethodDetails.email}
-                          onChange={(e) => setNewPaymentMethodDetails((prev) => ({ ...prev, email: e.target.value }))}
-                          className="h-11 bg-white/[0.05] border-white/[0.08] text-white text-sm rounded-xl"
-                        />
-                      )}
-
-                      {/* Account-based fields (Payoneer, SWIFT) */}
-                      {(newPaymentMethodType === "payoneer" || newPaymentMethodType === "bank_swift") && (
-                        <Input
-                          placeholder={newPaymentMethodType === "payoneer" ? "Payoneer Account ID" : "Bank Account / SWIFT Code"}
-                          value={newPaymentMethodDetails.accountId}
-                          onChange={(e) => setNewPaymentMethodDetails((prev) => ({ ...prev, accountId: e.target.value }))}
-                          className="h-11 bg-white/[0.05] border-white/[0.08] text-white text-sm rounded-xl"
-                        />
-                      )}
-
-                      {newPaymentMethodType && (
-                        <button
-                          onClick={handleAddPaymentMethod}
-                          className="w-full h-10 rounded-xl bg-white text-black text-xs font-bold hover:bg-white/90 transition-all"
-                        >
-                          Save Payment Method
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <StripeEscrowPaymentForm
+                  savedMethods={savedPaymentMethods}
+                  onPaymentMethodSelect={setSelectedPaymentMethod}
+                  selectedPaymentMethod={selectedPaymentMethod}
+                  amount={Number(escrowContract.amount)}
+                  contractId={escrowContract.contractId}
+                  freelancerId={activeConversation?.partnerId || ""}
+                  onSuccess={() => {
+                    setShowEscrowModal(false);
+                    setEscrowContract(null);
+                    setEscrowMsg(null);
+                    if (activeConversation) {
+                      fetchMessagesForConversation(activeConversation.partnerId, { silent: true });
+                    }
+                  }}
+                  onCancel={() => {
+                    setShowEscrowModal(false);
+                    setShowAddPaymentMethod(false);
+                  }}
+                />
 
                 {/* Cancellation Policy Warning */}
                 <div className="rounded-xl bg-amber-500/[0.06] border border-amber-500/15 p-4 space-y-2">
@@ -4428,19 +4374,6 @@ export default function CommunityPage() {
                     <p>• <strong className="text-red-400">2nd late cancellation:</strong> Double platform fee (£20) charged + <strong className="text-red-400">permanent ban</strong> from the community.</p>
                   </div>
                 </div>
-
-                {/* Pay Button */}
-                <button
-                  onClick={handleEscrowPayment}
-                  disabled={escrowProcessing || (!selectedPaymentMethod && savedPaymentMethods.length > 0)}
-                  className="w-full h-13 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold text-sm hover:from-emerald-500 hover:to-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
-                >
-                  {escrowProcessing ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Processing Payment...</>
-                  ) : (
-                    <><Shield className="w-4 h-4" /> Pay £{(Number(escrowContract.amount) + 10).toFixed(2)} & Accept Contract</>
-                  )}
-                </button>
               </div>
             </motion.div>
           </motion.div>
@@ -4500,6 +4433,26 @@ export default function CommunityPage() {
                     </p>
                   </div>
                 </div>
+
+                {/* Stripe Connect Warning */}
+                {(!stripeConnectStatus?.connected || !stripeConnectStatus?.isOnboarded) && (
+                  <div className="rounded-xl bg-[#f5c518]/[0.08] border border-[#f5c518]/20 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-[#f5c518] shrink-0" />
+                      <p className="text-xs font-bold text-[#f5c518]">Payout Account Required</p>
+                    </div>
+                    <p className="text-[11px] text-white/60 leading-relaxed pl-6">
+                      You must connect a Stripe payout account before accepting contracts. Clients will not be able to fund escrow until you complete this setup.
+                    </p>
+                    <div className="pl-6">
+                      <StripeConnectButton
+                        accountStatus={stripeConnectStatus}
+                        onStatusChange={fetchStripeConnectStatus}
+                        variant="small"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Cancellation Policy Warning */}
                 <div className="rounded-xl bg-amber-500/[0.06] border border-amber-500/15 p-4 space-y-2">

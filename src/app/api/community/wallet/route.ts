@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { freelancerWallets, walletTransactions, notifications } from "@/db/schema";
+import { freelancerWallets, walletTransactions, notifications, communityProfiles } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { getStripeClient } from "@/lib/stripe";
 
 function buildAuthHeaders(req: NextRequest) {
   const h = new Headers(req.headers);
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST — withdraw funds
+// POST — withdraw funds via Stripe Connect Payout
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: buildAuthHeaders(req) });
   if (!session?.user?.id) {
@@ -68,13 +69,27 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { amount, withdrawalMethod } = body;
 
-    if (!amount || !withdrawalMethod) {
-      return NextResponse.json({ error: "Missing amount or withdrawal method" }, { status: 400 });
+    if (!amount) {
+      return NextResponse.json({ error: "Missing amount" }, { status: 400 });
     }
 
     const amountPence = Math.round(Number(amount) * 100);
     if (amountPence <= 0) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+    }
+
+    // Verify freelancer has a Stripe Connect account
+    const [profile] = await db
+      .select({ stripeAccountId: communityProfiles.stripeAccountId })
+      .from(communityProfiles)
+      .where(eq(communityProfiles.userId, session.user.id))
+      .limit(1);
+
+    if (!profile?.stripeAccountId) {
+      return NextResponse.json(
+        { error: "You must complete Stripe Connect onboarding before withdrawing funds." },
+        { status: 400 }
+      );
     }
 
     const [wallet] = await db.select().from(freelancerWallets)
@@ -85,11 +100,29 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString();
+    const stripe = getStripeClient();
 
-    // Transaction fee is absorbed by platform (max £3, taken from platform's £10 fee)
-    // Freelancer gets full amount
-    const transactionFee = 0; // Fee is on platform side, not freelancer
-    const netAmount = amountPence;
+    // Create Stripe Connect Payout to freelancer's bank
+    let payout;
+    try {
+      payout = await stripe.payouts.create(
+        {
+          amount: amountPence,
+          currency: "gbp",
+          metadata: {
+            userId: session.user.id,
+            type: "freelancer_withdrawal",
+          },
+        },
+        { stripeAccount: profile.stripeAccountId }
+      );
+    } catch (stripeError: any) {
+      console.error("[wallet/withdraw] Stripe Payout failed:", stripeError);
+      return NextResponse.json(
+        { error: stripeError.message || "Failed to create payout. Ensure your Connect account is fully verified and has sufficient balance." },
+        { status: 400 }
+      );
+    }
 
     // Deduct from wallet
     await db.update(freelancerWallets)
@@ -105,11 +138,12 @@ export async function POST(req: NextRequest) {
       userId: session.user.id,
       type: "withdrawal",
       amount: amountPence,
-      fee: transactionFee,
-      netAmount,
-      description: `Withdrawal to ${withdrawalMethod.replace(/_/g, " ")}`,
-      withdrawalMethod,
-      status: "completed",
+      fee: 0,
+      netAmount: amountPence,
+      stripePayoutId: payout.id,
+      description: `Withdrawal to bank account`,
+      withdrawalMethod: withdrawalMethod || "stripe_connect",
+      status: payout.status === "paid" ? "completed" : "pending",
       createdAt: now,
     }).returning();
 
@@ -117,13 +151,13 @@ export async function POST(req: NextRequest) {
     await db.insert(notifications).values({
       userId: session.user.id,
       type: "withdrawal_completed",
-      title: "Withdrawal Processed",
-      message: `Your withdrawal of £${(amountPence / 100).toFixed(2)} to ${withdrawalMethod.replace(/_/g, " ")} has been processed successfully.`,
+      title: "Withdrawal Initiated",
+      message: `Your withdrawal of £${(amountPence / 100).toFixed(2)} has been initiated. Funds will arrive in your bank account within 1-2 business days.`,
       isRead: false,
       createdAt: now,
     });
 
-    return NextResponse.json({ success: true, transaction });
+    return NextResponse.json({ success: true, transaction, payoutId: payout.id, status: payout.status });
   } catch (error) {
     console.error("Error processing withdrawal:", error);
     return NextResponse.json({ error: "Failed to process withdrawal" }, { status: 500 });

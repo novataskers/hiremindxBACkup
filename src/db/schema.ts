@@ -252,6 +252,7 @@ export const communityProfiles = sqliteTable('community_profiles', {
   companySize: text('company_size'),
   industry: text('industry'),
   paymentMethods: text('payment_methods', { mode: 'json' }),
+  stripeAccountId: text('stripe_account_id'), // Stripe Connect account ID for freelancers
   profileComplete: integer('profile_complete', { mode: 'boolean' }).default(false),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
@@ -521,6 +522,7 @@ export const escrowTransactions = sqliteTable('escrow_transactions', {
   status: text('status').notNull().default('pending'), // pending, funded, released, completed, cancelled, refunded
   paymentMethodId: integer('payment_method_id'),
   stripePaymentIntentId: text('stripe_payment_intent_id'),
+  stripeTransferId: text('stripe_transfer_id'),
   fundedAt: text('funded_at'),
   releasedAt: text('released_at'),
   completedAt: text('completed_at'),
@@ -566,6 +568,7 @@ export const walletTransactions = sqliteTable('wallet_transactions', {
   fee: integer('fee').notNull().default(0), // transaction fee in pence
   netAmount: integer('net_amount').notNull(), // amount after fee
   contractId: text('contract_id'), // related contract
+  stripePayoutId: text('stripe_payout_id'),
   description: text('description').notNull(),
   withdrawalMethod: text('withdrawal_method'), // debit_card, credit_card, paypal, wise, payoneer, bank_swift
   status: text('status').notNull().default('completed'), // completed, pending, failed

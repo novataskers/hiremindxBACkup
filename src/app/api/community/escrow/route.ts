@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { escrowTransactions, freelancerWallets, walletTransactions, cancellationRecords, notifications, communityProfiles } from "@/db/schema";
 import { and, eq, desc } from "drizzle-orm";
+import { getStripeClient } from "@/lib/stripe";
 
 function buildAuthHeaders(req: NextRequest) {
   const h = new Headers(req.headers);
@@ -73,15 +74,63 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case "fund": {
-        // Client funds escrow
+        // Client funds escrow — create a real Stripe PaymentIntent
         const { contractId, freelancerId, contractAmount, paymentMethodId } = body;
         if (!contractId || !freelancerId || !contractAmount) {
           return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
+        // Verify freelancer has a Stripe Connect account
+        const [freelancerProfile] = await db
+          .select({ stripeAccountId: communityProfiles.stripeAccountId })
+          .from(communityProfiles)
+          .where(eq(communityProfiles.userId, freelancerId))
+          .limit(1);
+
+        if (!freelancerProfile?.stripeAccountId) {
+          return NextResponse.json(
+            { error: "Freelancer has not set up their payout account yet. They must complete Stripe Connect onboarding before you can fund this contract." },
+            { status: 400 }
+          );
+        }
+
         const amountPence = Math.round(Number(contractAmount) * 100);
         const totalCharged = amountPence + PLATFORM_FEE_PENCE;
         const now = new Date().toISOString();
+        const stripe = getStripeClient();
+
+        // Create Stripe PaymentIntent to charge the client
+        let paymentIntent;
+        try {
+          paymentIntent = await stripe.paymentIntents.create({
+            amount: totalCharged,
+            currency: "gbp",
+            customer: undefined, // Can be enhanced to use Stripe Customer IDs
+            payment_method: paymentMethodId || undefined,
+            confirm: !!paymentMethodId,
+            off_session: !!paymentMethodId,
+            metadata: {
+              contractId,
+              clientId: session.user.id,
+              freelancerId,
+              contractAmount: String(amountPence),
+              platformFee: String(PLATFORM_FEE_PENCE),
+              type: "escrow_fund",
+            },
+            description: `Escrow funding for contract ${contractId}`,
+            transfer_data: {
+              destination: freelancerProfile.stripeAccountId,
+              amount: amountPence, // Transfer contract amount to freelancer, platform keeps fee
+            },
+            on_behalf_of: freelancerProfile.stripeAccountId,
+          });
+        } catch (stripeError: any) {
+          console.error("[escrow/fund] Stripe PaymentIntent creation failed:", stripeError);
+          return NextResponse.json(
+            { error: stripeError.message || "Failed to process payment" },
+            { status: 400 }
+          );
+        }
 
         // Create escrow transaction
         const [escrow] = await db.insert(escrowTransactions).values({
@@ -91,8 +140,9 @@ export async function POST(req: NextRequest) {
           contractAmount: amountPence,
           platformFee: PLATFORM_FEE_PENCE,
           totalCharged,
-          status: "funded",
+          status: paymentIntent.status === "succeeded" ? "funded" : "pending",
           paymentMethodId: paymentMethodId || null,
+          stripePaymentIntentId: paymentIntent.id,
           fundedAt: now,
           createdAt: now,
           updatedAt: now,
@@ -130,11 +180,16 @@ export async function POST(req: NextRequest) {
           createdAt: now,
         });
 
-        return NextResponse.json({ success: true, escrow });
+        return NextResponse.json({
+          success: true,
+          escrow,
+          paymentIntentStatus: paymentIntent.status,
+          clientSecret: paymentIntent.client_secret,
+        });
       }
 
       case "release": {
-        // Client releases money from escrow to freelancer
+        // Client releases money from escrow to freelancer via Stripe Connect Transfer
         const { contractId: releaseContractId } = body;
         if (!releaseContractId) {
           return NextResponse.json({ error: "Missing contractId" }, { status: 400 });
@@ -155,11 +210,52 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Only the client can release funds" }, { status: 403 });
         }
 
+        // Verify freelancer has a Stripe Connect account
+        const [freelancerProfile] = await db
+          .select({ stripeAccountId: communityProfiles.stripeAccountId })
+          .from(communityProfiles)
+          .where(eq(communityProfiles.userId, escrow.freelancerId))
+          .limit(1);
+
+        if (!freelancerProfile?.stripeAccountId) {
+          return NextResponse.json(
+            { error: "Freelancer has not set up their payout account." },
+            { status: 400 }
+          );
+        }
+
         const now = new Date().toISOString();
+        const stripe = getStripeClient();
+
+        // Create Stripe Transfer to freelancer's Connect account
+        let transfer;
+        try {
+          transfer = await stripe.transfers.create({
+            amount: escrow.contractAmount,
+            currency: "gbp",
+            destination: freelancerProfile.stripeAccountId,
+            metadata: {
+              contractId: releaseContractId,
+              escrowId: String(escrow.id),
+              type: "escrow_release",
+            },
+          });
+        } catch (stripeError: any) {
+          console.error("[escrow/release] Stripe Transfer failed:", stripeError);
+          return NextResponse.json(
+            { error: stripeError.message || "Failed to transfer funds to freelancer" },
+            { status: 400 }
+          );
+        }
 
         // Update escrow status
         await db.update(escrowTransactions)
-          .set({ status: "released", releasedAt: now, updatedAt: now })
+          .set({
+            status: "released",
+            releasedAt: now,
+            stripeTransferId: transfer.id,
+            updatedAt: now,
+          })
           .where(eq(escrowTransactions.id, escrow.id));
 
         // Move money from pending to available in freelancer wallet
@@ -205,7 +301,7 @@ export async function POST(req: NextRequest) {
           .set({ status: "completed", completedAt: now, updatedAt: now })
           .where(eq(escrowTransactions.id, escrow.id));
 
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, transferId: transfer.id });
       }
 
       case "cancel": {
@@ -272,6 +368,28 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // Refund via Stripe if within grace period
+        let stripeRefund = null;
+        if (withinGracePeriod && escrow.stripePaymentIntentId) {
+          const stripe = getStripeClient();
+          try {
+            stripeRefund = await stripe.refunds.create({
+              payment_intent: escrow.stripePaymentIntentId,
+              metadata: {
+                contractId: cancelContractId,
+                cancelledBy: session.user.id,
+                reason: "escrow_cancellation_grace_period",
+              },
+            });
+          } catch (refundError: any) {
+            console.error("[escrow/cancel] Stripe refund failed:", refundError);
+            return NextResponse.json(
+              { error: "Failed to process refund. Please contact support." },
+              { status: 500 }
+            );
+          }
+        }
+
         // Record cancellation
         await db.insert(cancellationRecords).values({
           userId: session.user.id,
@@ -315,7 +433,7 @@ export async function POST(req: NextRequest) {
           message: isBanned
             ? `A contract has been cancelled. The cancelling party has been banned from the community due to repeated late cancellations.`
             : withinGracePeriod
-              ? `A contract has been cancelled within the grace period. No penalties applied.`
+              ? `A contract has been cancelled within the grace period. A full refund of £${(escrow.totalCharged / 100).toFixed(2)} has been initiated to the client.`
               : `A contract has been cancelled after the 12-hour grace period. The platform fee penalty has been applied.`,
           isRead: false,
           createdAt: now,
@@ -326,6 +444,7 @@ export async function POST(req: NextRequest) {
           withinGracePeriod,
           penaltyApplied,
           isBanned,
+          refundId: stripeRefund?.id || null,
         });
       }
 
