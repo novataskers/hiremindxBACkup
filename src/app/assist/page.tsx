@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
-import { Loader2, Send, Search, Mic, MicOff, Copy, Check, Volume2, Paperclip, X, FileText, Image as ImageIcon, History, Plus, Trash2, Download, Mail, AlertCircle, Code } from "lucide-react";
+import { Loader2, Send, Search, Mic, MicOff, Copy, Check, Volume2, Paperclip, X, FileText, Image as ImageIcon, History, Plus, Trash2, Download, Mail, AlertCircle, Code, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -1427,10 +1427,10 @@ export default function AssistPage() {
                       {[
                         { label: "Deep research: Find Epstein case court documents", icon: Search },
                         { label: "Predict hiring trends in AI and machine learning", icon: Search },
-                        { label: "Live market analysis on Tesla stock", icon: Code },
+                        { label: "Live market analysis on Tesla stock", icon: TrendingUp },
                         { label: "Make me a simple portfolio website", icon: Code },
                         { label: "Write a cold outreach email for a software role", icon: Mail },
-                        { label: "When was Michael Jackson born?", icon: Code },
+                        { label: "When was Michael Jackson born?", icon: Search },
                       ].map((action) => (
                       <button
                         key={action.label}
