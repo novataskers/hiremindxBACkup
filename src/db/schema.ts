@@ -569,6 +569,7 @@ export const walletTransactions = sqliteTable('wallet_transactions', {
   netAmount: integer('net_amount').notNull(), // amount after fee
   contractId: text('contract_id'), // related contract
   stripePayoutId: text('stripe_payout_id'),
+  stripeTransferId: text('stripe_transfer_id'),
   description: text('description').notNull(),
   withdrawalMethod: text('withdrawal_method'), // debit_card, credit_card, paypal, wise, payoneer, bank_swift
   status: text('status').notNull().default('completed'), // completed, pending, failed

@@ -189,7 +189,8 @@ export async function POST(req: NextRequest) {
       }
 
       case "release": {
-        // Client releases money from escrow to freelancer via Stripe Connect Transfer
+        // Client releases money from escrow — update freelancer balance only.
+        // Actual funds stay in the platform's Stripe account until freelancer withdraws.
         const { contractId: releaseContractId } = body;
         if (!releaseContractId) {
           return NextResponse.json({ error: "Missing contractId" }, { status: 400 });
@@ -210,50 +211,13 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Only the client can release funds" }, { status: 403 });
         }
 
-        // Verify freelancer has a Stripe Connect account
-        const [freelancerProfile] = await db
-          .select({ stripeAccountId: communityProfiles.stripeAccountId })
-          .from(communityProfiles)
-          .where(eq(communityProfiles.userId, escrow.freelancerId))
-          .limit(1);
-
-        if (!freelancerProfile?.stripeAccountId) {
-          return NextResponse.json(
-            { error: "Freelancer has not set up their payout account." },
-            { status: 400 }
-          );
-        }
-
         const now = new Date().toISOString();
-        const stripe = getStripeClient();
-
-        // Create Stripe Transfer to freelancer's Connect account
-        let transfer;
-        try {
-          transfer = await stripe.transfers.create({
-            amount: escrow.contractAmount,
-            currency: "gbp",
-            destination: freelancerProfile.stripeAccountId,
-            metadata: {
-              contractId: releaseContractId,
-              escrowId: String(escrow.id),
-              type: "escrow_release",
-            },
-          });
-        } catch (stripeError: any) {
-          console.error("[escrow/release] Stripe Transfer failed:", stripeError);
-          return NextResponse.json(
-            { error: stripeError.message || "Failed to transfer funds to freelancer" },
-            { status: 400 }
-          );
-        }
 
         // Update escrow status
         await db.update(escrowTransactions)
           .set({
             status: "released",
             releasedAt: now,
-            stripeTransferId: transfer.id,
             updatedAt: now,
           })
           .where(eq(escrowTransactions.id, escrow.id));
@@ -301,7 +265,7 @@ export async function POST(req: NextRequest) {
           .set({ status: "completed", completedAt: now, updatedAt: now })
           .where(eq(escrowTransactions.id, escrow.id));
 
-        return NextResponse.json({ success: true, transferId: transfer.id });
+        return NextResponse.json({ success: true });
       }
 
       case "cancel": {

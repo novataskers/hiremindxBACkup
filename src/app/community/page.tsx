@@ -24,7 +24,6 @@ import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/auth-client";
 import { CommunityOnboardingModal } from "@/components/CommunityOnboardingModal";
 import StripeEscrowPaymentForm from "@/components/StripeEscrowPaymentForm";
-import StripeConnectButton from "@/components/StripeConnectButton";
 
 const CATEGORIES = [
   { id: "all", name: "All Categories", icon: LayoutGrid },
@@ -247,7 +246,6 @@ export default function CommunityPage() {
   const [showAddPaymentMethod, setShowAddPaymentMethod] = useState(false);
   const [newPaymentMethodType, setNewPaymentMethodType] = useState("");
   const [newPaymentMethodDetails, setNewPaymentMethodDetails] = useState({ cardNumber: "", expiry: "", cvv: "", name: "", email: "", accountId: "" });
-  const [stripeConnectStatus, setStripeConnectStatus] = useState<any>(null);
   const [releasingContractId, setReleasingContractId] = useState<string | null>(null);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<string | null>(null);
 
@@ -494,33 +492,13 @@ export default function CommunityPage() {
     setActiveTab(type === "freelancer" ? "projects" : "offers");
   };
 
-  // Fetch Stripe Connect status for freelancers
-  const fetchStripeConnectStatus = useCallback(async () => {
-    try {
-      const res = await fetch("/api/community/stripe/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "status" }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setStripeConnectStatus(data);
-      }
-    } catch (error) {
-      console.error("Error fetching Stripe Connect status:", error);
-    }
-  }, []);
-
   useEffect(() => {
     if (!hasProfile) return;
-    if (userType === "freelancer") {
-      fetchStripeConnectStatus();
-      if (dbProjects.length === 0) {
-        fetch("/api/community/projects")
-          .then((r) => r.json())
-          .then((data) => { if (data.projects) setDbProjects(data.projects); })
-          .catch(console.error);
-      }
+    if (userType === "freelancer" && dbProjects.length === 0) {
+      fetch("/api/community/projects")
+        .then((r) => r.json())
+        .then((data) => { if (data.projects) setDbProjects(data.projects); })
+        .catch(console.error);
     }
     if (userType === "client" && offers.length === 0) {
       fetch("/api/community/offers")
@@ -528,7 +506,7 @@ export default function CommunityPage() {
         .then((data) => { if (data.offers) setOffers(data.offers); })
         .catch(console.error);
     }
-  }, [hasProfile, userType, fetchStripeConnectStatus]);
+  }, [hasProfile, userType]);
 
   useEffect(() => {
     if (activeTab === "freelancers" && freelancers.length === 0) {
@@ -2158,29 +2136,6 @@ export default function CommunityPage() {
             />
           ) : (
             <div className="flex flex-col h-full bg-[#0a0a0a]/90 relative z-20">
-              {/* Stripe Connect Onboarding Banner */}
-              {(!stripeConnectStatus?.connected || !stripeConnectStatus?.isOnboarded) && (
-                <div className="p-4 border-b border-white/[0.08] bg-amber-500/[0.06]">
-                  <p className="text-[11px] text-amber-300 mb-2 leading-relaxed">
-                    {!stripeConnectStatus?.connected
-                      ? "Connect your Stripe account to receive payments from clients."
-                      : "Complete your Stripe onboarding to start receiving payouts."}
-                  </p>
-                  <StripeConnectButton
-                    accountStatus={stripeConnectStatus}
-                    onStatusChange={fetchStripeConnectStatus}
-                    variant="default"
-                  />
-                </div>
-              )}
-              {stripeConnectStatus?.connected && stripeConnectStatus?.isOnboarded && (
-                <div className="px-4 py-2 border-b border-emerald-500/10 bg-emerald-500/[0.04]">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-[11px] text-emerald-400 font-medium">Payouts connected</span>
-                  </div>
-                </div>
-              )}
               <div className="p-5 border-b border-white/[0.08] sticky top-0 bg-[#0a0a0a]/95 backdrop-blur-md z-30">
                 <h2 className="text-sm font-black uppercase tracking-widest text-white/80 mb-4 flex items-center gap-2">
                   <Target className="w-4 h-4 text-[#22c55e]" /> Nearby Jobs
@@ -4433,26 +4388,6 @@ export default function CommunityPage() {
                     </p>
                   </div>
                 </div>
-
-                {/* Stripe Connect Warning */}
-                {(!stripeConnectStatus?.connected || !stripeConnectStatus?.isOnboarded) && (
-                  <div className="rounded-xl bg-[#f5c518]/[0.08] border border-[#f5c518]/20 p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-[#f5c518] shrink-0" />
-                      <p className="text-xs font-bold text-[#f5c518]">Payout Account Required</p>
-                    </div>
-                    <p className="text-[11px] text-white/60 leading-relaxed pl-6">
-                      You must connect a Stripe payout account before accepting contracts. Clients will not be able to fund escrow until you complete this setup.
-                    </p>
-                    <div className="pl-6">
-                      <StripeConnectButton
-                        accountStatus={stripeConnectStatus}
-                        onStatusChange={fetchStripeConnectStatus}
-                        variant="small"
-                      />
-                    </div>
-                  </div>
-                )}
 
                 {/* Cancellation Policy Warning */}
                 <div className="rounded-xl bg-amber-500/[0.06] border border-amber-500/15 p-4 space-y-2">

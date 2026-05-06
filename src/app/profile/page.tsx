@@ -234,7 +234,15 @@ export default function ProfilePage() {
         body: JSON.stringify({ amount: Number(withdrawAmount), withdrawalMethod: withdrawMethod }),
       });
       const data = await res.json();
-      if (res.ok) {
+
+      // Lazy Stripe Connect onboarding — redirect if needed
+      if (data?.needsOnboarding && data?.onboardingUrl) {
+        toast.info("Please complete your payout setup to continue.");
+        window.location.href = data.onboardingUrl;
+        return;
+      }
+
+      if (res.ok && data?.success) {
         toast.success("Withdrawal processed!");
         setShowWithdrawModal(false);
         setWithdrawAmount("");

@@ -58,7 +58,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST — withdraw funds via Stripe Connect Payout
+// POST — withdraw funds via Stripe Connect Transfer
+// Freelancers only need a Connect account when they want to withdraw.
+// If they don't have one yet, we create it and return an onboarding link.
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: buildAuthHeaders(req) });
   if (!session?.user?.id) {
@@ -78,20 +80,56 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
-    // Verify freelancer has a Stripe Connect account
+    const stripe = getStripeClient();
+    const now = new Date().toISOString();
+
+    // Check / create Stripe Connect account for this freelancer
     const [profile] = await db
       .select({ stripeAccountId: communityProfiles.stripeAccountId })
       .from(communityProfiles)
       .where(eq(communityProfiles.userId, session.user.id))
       .limit(1);
 
-    if (!profile?.stripeAccountId) {
-      return NextResponse.json(
-        { error: "You must complete Stripe Connect onboarding before withdrawing funds." },
-        { status: 400 }
-      );
+    let stripeAccountId = profile?.stripeAccountId;
+
+    if (!stripeAccountId) {
+      // Lazy-create a Stripe Connect Express account
+      const account = await stripe.accounts.create({
+        type: "express",
+        country: "GB",
+        email: session.user.email || undefined,
+        capabilities: { transfers: { requested: true } },
+        metadata: { userId: session.user.id },
+      });
+
+      stripeAccountId = account.id;
+
+      await db.update(communityProfiles)
+        .set({ stripeAccountId, updatedAt: now })
+        .where(eq(communityProfiles.userId, session.user.id));
     }
 
+    // Check onboarding status
+    const account = await stripe.accounts.retrieve(stripeAccountId);
+    const isOnboarded = account.details_submitted && account.payouts_enabled;
+
+    if (!isOnboarded) {
+      // Return onboarding link so frontend can redirect them
+      const accountLink = await stripe.accountLinks.create({
+        account: stripeAccountId,
+        refresh_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://www.hiremindx.com"}/profile?stripe_connect=refresh`,
+        return_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://www.hiremindx.com"}/profile?stripe_connect=success`,
+        type: "account_onboarding",
+      });
+
+      return NextResponse.json({
+        needsOnboarding: true,
+        onboardingUrl: accountLink.url,
+        message: "Please complete your payout setup before withdrawing funds.",
+      });
+    }
+
+    // Verify wallet balance
     const [wallet] = await db.select().from(freelancerWallets)
       .where(eq(freelancerWallets.userId, session.user.id));
 
@@ -99,27 +137,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Insufficient balance" }, { status: 400 });
     }
 
-    const now = new Date().toISOString();
-    const stripe = getStripeClient();
-
-    // Create Stripe Connect Payout to freelancer's bank
-    let payout;
+    // Create Stripe Transfer from platform to freelancer's Connect account
+    let transfer;
     try {
-      payout = await stripe.payouts.create(
-        {
-          amount: amountPence,
-          currency: "gbp",
-          metadata: {
-            userId: session.user.id,
-            type: "freelancer_withdrawal",
-          },
+      transfer = await stripe.transfers.create({
+        amount: amountPence,
+        currency: "gbp",
+        destination: stripeAccountId,
+        metadata: {
+          userId: session.user.id,
+          type: "freelancer_withdrawal",
         },
-        { stripeAccount: profile.stripeAccountId }
-      );
+      });
     } catch (stripeError: any) {
-      console.error("[wallet/withdraw] Stripe Payout failed:", stripeError);
+      console.error("[wallet/withdraw] Stripe Transfer failed:", stripeError);
       return NextResponse.json(
-        { error: stripeError.message || "Failed to create payout. Ensure your Connect account is fully verified and has sufficient balance." },
+        { error: stripeError.message || "Failed to transfer funds. Please try again later." },
         { status: 400 }
       );
     }
@@ -140,10 +173,10 @@ export async function POST(req: NextRequest) {
       amount: amountPence,
       fee: 0,
       netAmount: amountPence,
-      stripePayoutId: payout.id,
-      description: `Withdrawal to bank account`,
+      stripeTransferId: transfer.id,
+      description: `Withdrawal to connected account`,
       withdrawalMethod: withdrawalMethod || "stripe_connect",
-      status: payout.status === "paid" ? "completed" : "pending",
+      status: transfer.reversed ? "reversed" : "completed",
       createdAt: now,
     }).returning();
 
@@ -152,12 +185,16 @@ export async function POST(req: NextRequest) {
       userId: session.user.id,
       type: "withdrawal_completed",
       title: "Withdrawal Initiated",
-      message: `Your withdrawal of £${(amountPence / 100).toFixed(2)} has been initiated. Funds will arrive in your bank account within 1-2 business days.`,
+      message: `Your withdrawal of £${(amountPence / 100).toFixed(2)} has been initiated. Transfer speed depends on your chosen payout method and bank.`,
       isRead: false,
       createdAt: now,
     });
 
-    return NextResponse.json({ success: true, transaction, payoutId: payout.id, status: payout.status });
+    return NextResponse.json({
+      success: true,
+      transaction,
+      transferId: transfer.id,
+    });
   } catch (error) {
     console.error("Error processing withdrawal:", error);
     return NextResponse.json({ error: "Failed to process withdrawal" }, { status: 500 });
