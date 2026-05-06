@@ -4273,13 +4273,13 @@ export default function CommunityPage() {
                       <span className="text-sm font-bold text-white">£{Number(escrowContract.amount).toFixed(2)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-white/70">Platform Fee</span>
-                      <span className="text-sm font-bold text-[#f5c518]">+ £10.00</span>
+                      <span className="text-sm text-white/70">Platform Fee (10%)</span>
+                      <span className="text-sm font-bold text-[#f5c518]">+ £{(Number(escrowContract.amount) * 0.1).toFixed(2)}</span>
                     </div>
                     <div className="h-px bg-white/10" />
                     <div className="flex items-center justify-between">
                       <span className="text-base font-bold text-white">Total</span>
-                      <span className="text-xl font-black text-emerald-400">£{(Number(escrowContract.amount) + 10).toFixed(2)}</span>
+                      <span className="text-xl font-black text-emerald-400">£{(Number(escrowContract.amount) * 1.1).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
