@@ -8,14 +8,38 @@ import { Toaster } from "@/components/ui/sonner";
 import Providers from "@/components/Providers";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.hiremindx.com"),
   title: "HireMindX - Autonomous Intelligence for Professionals",
   description: "HireMindX will find and apply to jobs that match your profile—all on autopilot.",
   icons: {
     icon: [
       { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.svg", sizes: "32x32", type: "image/svg+xml" },
     ],
     shortcut: "/favicon.svg",
     apple: "/favicon.svg",
+  },
+  openGraph: {
+    title: "HireMindX - Autonomous Intelligence for Professionals",
+    description: "HireMindX will find and apply to jobs that match your profile—all on autopilot.",
+    url: "https://www.hiremindx.com",
+    siteName: "HireMindX",
+    images: [
+      {
+        url: "/email-logo.png",
+        width: 1200,
+        height: 630,
+        alt: "HireMindX Logo",
+      },
+    ],
+    locale: "en_GB",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "HireMindX - Autonomous Intelligence for Professionals",
+    description: "HireMindX will find and apply to jobs that match your profile—all on autopilot.",
+    images: ["/email-logo.png"],
   },
 };
 
