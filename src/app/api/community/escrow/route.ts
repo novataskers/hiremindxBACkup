@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { escrowTransactions, freelancerWallets, walletTransactions, cancellationRecords, notifications, communityProfiles } from "@/db/schema";
+import { escrowTransactions, freelancerWallets, walletTransactions, cancellationRecords, notifications } from "@/db/schema";
 import { and, eq, desc } from "drizzle-orm";
 import { getStripeClient } from "@/lib/stripe";
 
@@ -79,20 +79,6 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
-        // Verify freelancer has a Stripe Connect account
-        const [freelancerProfile] = await db
-          .select({ stripeAccountId: communityProfiles.stripeAccountId })
-          .from(communityProfiles)
-          .where(eq(communityProfiles.userId, freelancerId))
-          .limit(1);
-
-        if (!freelancerProfile?.stripeAccountId) {
-          return NextResponse.json(
-            { error: "Freelancer has not set up their payout account yet. They must complete Stripe Connect onboarding before you can fund this contract." },
-            { status: 400 }
-          );
-        }
-
         const amountPence = Math.round(Number(contractAmount) * 100);
         const platformFee = Math.round(amountPence * 0.1); // 10% platform fee
         const totalCharged = amountPence + platformFee;
@@ -100,6 +86,7 @@ export async function POST(req: NextRequest) {
         const stripe = getStripeClient();
 
         // Create Stripe PaymentIntent to charge the client
+        // Money stays in the platform's Stripe account until freelancer withdraws
         let paymentIntent;
         try {
           paymentIntent = await stripe.paymentIntents.create({
@@ -118,11 +105,6 @@ export async function POST(req: NextRequest) {
               type: "escrow_fund",
             },
             description: `Escrow funding for contract ${contractId}`,
-            transfer_data: {
-              destination: freelancerProfile.stripeAccountId,
-              amount: amountPence, // Transfer contract amount to freelancer, platform keeps fee
-            },
-            on_behalf_of: freelancerProfile.stripeAccountId,
           });
         } catch (stripeError: any) {
           console.error("[escrow/fund] Stripe PaymentIntent creation failed:", stripeError);
