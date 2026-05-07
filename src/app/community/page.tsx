@@ -248,6 +248,7 @@ export default function CommunityPage() {
   const [newPaymentMethodDetails, setNewPaymentMethodDetails] = useState({ cardNumber: "", expiry: "", cvv: "", name: "", email: "", accountId: "" });
   const [releasingContractId, setReleasingContractId] = useState<string | null>(null);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<string | null>(null);
+  const [chatEscrowMap, setChatEscrowMap] = useState<Record<string, string | null>>({});
 
   const formatLocalDateTime = useCallback((value: any) => {
     if (!value) return null;
@@ -1092,6 +1093,7 @@ export default function CommunityPage() {
         if (!currentConversation?.partnerId) return;
         await fetchMessagesForConversation(currentConversation.partnerId, { silent: true });
         fetchConversations();
+        fetchManagedContracts();
       }, 2000);
       return () => { if (chatPollRef.current) clearInterval(chatPollRef.current); };
     }
@@ -1344,7 +1346,12 @@ export default function CommunityPage() {
       const data = await res.json();
       if (data.contracts) {
         setContracts(data.contracts);
-        setManagedProjectContracts(data.contracts.filter((contract: any) => contract.isOngoing || contract.status === "pending"));
+        const escrowMap: Record<string, string | null> = {};
+        for (const c of data.contracts) {
+          escrowMap[c.contractId] = c.escrowStatus || null;
+        }
+        setChatEscrowMap(escrowMap);
+        setManagedProjectContracts(data.contracts.filter((contract: any) => contract.isOngoing));
       }
     } catch {}
   }, [session?.user?.id]);
@@ -1447,7 +1454,22 @@ export default function CommunityPage() {
 
     setEscrowProcessing(true);
     try {
-      // 1. First accept the contract in the message system
+      // 1. Fund the escrow FIRST — contract is not truly accepted until money is in escrow
+      const escrowRes = await fetch("/api/community/escrow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "fund",
+          contractId: escrowContract.contractId,
+          freelancerId: activeConversation.partnerId,
+          contractAmount: Number(escrowContract.amount),
+          paymentMethodId: selectedPaymentMethod,
+        }),
+      });
+
+      if (!escrowRes.ok) throw new Error("Failed to fund escrow");
+
+      // 2. Only after successful escrow funding, mark contract as accepted
       const responsePayload = {
         type: "contract_response",
         contractId: escrowContract.contractId,
@@ -1472,21 +1494,6 @@ export default function CommunityPage() {
       if (msgData?.message) {
         setChatMessages((prev) => mergeMessages(prev, [normalizeMessageForUi(msgData.message)]));
       }
-
-      // 2. Fund the escrow
-      const escrowRes = await fetch("/api/community/escrow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "fund",
-          contractId: escrowContract.contractId,
-          freelancerId: activeConversation.partnerId,
-          contractAmount: Number(escrowContract.amount),
-          paymentMethodId: selectedPaymentMethod,
-        }),
-      });
-
-      if (!escrowRes.ok) throw new Error("Failed to fund escrow");
 
       toast.success("Contract accepted & payment escrowed successfully!");
       setShowEscrowModal(false);
@@ -3719,24 +3726,70 @@ export default function CommunityPage() {
                                   </div>
 
                                   {contractStatus ? (
-                                    <div className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 ${contractStatus.action === "accepted" ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20" : contractStatus.action === "declined" ? "bg-rose-500/15 text-rose-300 border border-rose-500/20" : "bg-amber-500/15 text-amber-300 border border-amber-500/20"}`}>
-                                      <div className="flex items-center gap-2">
-                                        {contractStatus.action === "accepted" ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                                        <div>
-                                          <p className="text-xs font-semibold">
-                                            {contractStatus.action === "accepted" ? "Contract accepted" : contractStatus.action === "declined" ? "Contract declined" : "Contract cancelled"}
-                                          </p>
-                                          <p className="text-[11px] opacity-80">
-                                            {contractStatus.actorName ? `${contractStatus.actorName} ` : ""}{contractStatus.action === "accepted" ? "approved this offer" : contractStatus.action === "declined" ? "declined this offer" : "cancelled this offer"}
-                                          </p>
+                                    contractStatus.action === "accepted" && !(
+                                      chatEscrowMap[contractOffer.contractId] === "funded" ||
+                                      chatEscrowMap[contractOffer.contractId] === "released" ||
+                                      chatEscrowMap[contractOffer.contractId] === "completed"
+                                    ) ? (
+                                      // Accepted but escrow not funded yet
+                                      userType === "client" ? (
+                                        <div className="flex justify-end gap-2 pt-1">
+                                          <button
+                                            type="button"
+                                            disabled={contractActionLoadingId === contractOffer.contractId}
+                                            onClick={() => {
+                                              setEscrowContract(contractOffer);
+                                              setEscrowMsg(msg);
+                                              setShowEscrowModal(true);
+                                              try {
+                                                fetch("/api/community/payment-methods/stripe")
+                                                  .then((r) => r.json())
+                                                  .then((data) => {
+                                                    if (data.paymentMethods) {
+                                                      setSavedPaymentMethods(data.paymentMethods);
+                                                      if (data.paymentMethods.length > 0) {
+                                                        setSelectedPaymentMethod(data.paymentMethods[0].id);
+                                                      }
+                                                    }
+                                                  });
+                                              } catch {}
+                                            }}
+                                            className="h-8 rounded-lg px-3 text-[11px] font-semibold text-black bg-[#f5c518] hover:bg-[#e6b910] disabled:opacity-50"
+                                          >
+                                            Proceed to Fund Escrow
+                                          </button>
                                         </div>
+                                      ) : (
+                                        <div className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                                          <div className="flex items-center gap-2">
+                                            <Clock className="w-4 h-4" />
+                                            <div>
+                                              <p className="text-xs font-semibold">Waiting for client to fund escrow</p>
+                                              <p className="text-[11px] opacity-80">The client needs to complete payment for this contract to become active</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )
+                                    ) : (
+                                      <div className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 ${contractStatus.action === "accepted" ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20" : contractStatus.action === "declined" ? "bg-rose-500/15 text-rose-300 border border-rose-500/20" : "bg-amber-500/15 text-amber-300 border border-amber-500/20"}`}>
+                                        <div className="flex items-center gap-2">
+                                          {contractStatus.action === "accepted" ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                                          <div>
+                                            <p className="text-xs font-semibold">
+                                              {contractStatus.action === "accepted" ? "Contract Active" : contractStatus.action === "declined" ? "Contract declined" : "Contract cancelled"}
+                                            </p>
+                                            <p className="text-[11px] opacity-80">
+                                              {contractStatus.actorName ? `${contractStatus.actorName} ` : ""}{contractStatus.action === "accepted" ? "approved and funded this offer" : contractStatus.action === "declined" ? "declined this offer" : "cancelled this offer"}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        {contractStatus.actedAt && (
+                                          <span className="text-[10px] opacity-70 whitespace-nowrap">
+                                            {new Date(contractStatus.actedAt).toLocaleString()}
+                                          </span>
+                                        )}
                                       </div>
-                                      {contractStatus.actedAt && (
-                                        <span className="text-[10px] opacity-70 whitespace-nowrap">
-                                          {new Date(contractStatus.actedAt).toLocaleString()}
-                                        </span>
-                                      )}
-                                    </div>
+                                    )
                                   ) : isMe ? (
                                     <div className="flex justify-end gap-2 pt-1">
                                       <button

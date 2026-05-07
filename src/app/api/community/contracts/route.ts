@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { communityDMs, communityProfiles, user } from "@/db/schema";
-import { and, desc, eq, like, or } from "drizzle-orm";
+import { communityDMs, communityProfiles, user, escrowTransactions } from "@/db/schema";
+import { and, desc, eq, like, or, inArray } from "drizzle-orm";
 
 function buildAuthHeaders(req: NextRequest) {
   const h = new Headers(req.headers);
@@ -152,16 +152,31 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  const contractIds = Array.from(contractMap.keys());
+  let escrowMap = new Map<string, any>();
+  if (contractIds.length > 0) {
+    const escrowRows = await db.select()
+      .from(escrowTransactions)
+      .where(inArray(escrowTransactions.contractId, contractIds));
+    for (const row of escrowRows) {
+      escrowMap.set(row.contractId, row);
+    }
+  }
+
   const items = await Promise.all(
     Array.from(contractMap.values()).map(async (contract) => {
       const [profile] = await db.select().from(communityProfiles).where(eq(communityProfiles.userId, contract.partnerId));
       const [u] = await db.select().from(user).where(eq(user.id, contract.partnerId));
+      const escrow = escrowMap.get(contract.contractId);
+      const escrowFunded = escrow && (escrow.status === "funded" || escrow.status === "released" || escrow.status === "completed");
 
       return {
         ...contract,
         isSender: contract.senderId === session.user.id,
         isReceiver: contract.receiverId === session.user.id,
-        isOngoing: contract.status === "accepted",
+        isOngoing: escrowFunded,
+        escrowStatus: escrow?.status || null,
+        escrowFundedAt: escrow?.fundedAt || null,
         partnerName: profile?.displayName || u?.name || "Unknown",
         partnerImage: u?.image || null,
         partnerType: profile?.userType || "unknown",
