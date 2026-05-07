@@ -169,12 +169,13 @@ export async function GET(req: NextRequest) {
       const [u] = await db.select().from(user).where(eq(user.id, contract.partnerId));
       const escrow = escrowMap.get(contract.contractId);
       const escrowFunded = escrow && (escrow.status === "funded" || escrow.status === "released" || escrow.status === "completed");
+      const isOngoing = escrowFunded && contract.status !== "cancelled" && contract.status !== "declined";
 
       return {
         ...contract,
         isSender: contract.senderId === session.user.id,
         isReceiver: contract.receiverId === session.user.id,
-        isOngoing: escrowFunded,
+        isOngoing,
         escrowStatus: escrow?.status || null,
         escrowFundedAt: escrow?.fundedAt || null,
         partnerName: profile?.displayName || u?.name || "Unknown",
@@ -184,5 +185,7 @@ export async function GET(req: NextRequest) {
     })
   );
 
-  return NextResponse.json({ contracts: items.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()) });
+  const visibleItems = items.filter((c) => c.status !== "cancelled" && c.status !== "declined");
+
+  return NextResponse.json({ contracts: visibleItems.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()) });
 }

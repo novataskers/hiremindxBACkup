@@ -73,7 +73,7 @@ function normalizeCategory(value: string) {
   if (/(writer|writing|content|copy|blog|article|translation|editor)/i.test(normalized)) return "writing";
   if (/(marketing|seo|ads|social media|growth)/i.test(normalized)) return "marketing";
   if (/(video|photo|animation|editing|videographer|photographer)/i.test(normalized)) return "video";
-  if (/(plumb|electric|repair|handyman|construction|cleaning|maintenance|hvac|roofer|local service)/i.test(normalized)) return "trades";
+  if (/(plumb|electric|plumber|electrician|electric work|electrical work|carpenter|painter|mechanic|cleaner|handyman|repair|fix|installation|maintenance|hvac|roofer|roofing|leak|clogged|broken|wiring|outlet|circuit|breaker|fuse|pipe|toilet|sink|faucet|drain|shower|bathtub|drywall|tile|flooring|fence|deck|patio|driveway|appliance|washer|dryer|dishwasher|refrigerator|oven|stove|garage door|window|door|lock|chimney|pool|sprinkler|concrete|masonry|brick|garden|landscape|lawn|pest|water heater|boiler|furnace|air conditioning|heating|cooling|duct|vent|insulation|siding|paint|wallpaper|ceiling|basement|attic|foundation|trim|cabinet|countertop|backsplash|construction|local service|home repair|home improvement|home fix)/i.test(normalized)) return "trades";
   if (/(accounting|admin|assistant|consulting|business|bookkeeping|research)/i.test(normalized)) return "business";
   if (/(legal|lawyer|contract|attorney|paralegal)/i.test(normalized)) return "legal";
 
@@ -128,7 +128,7 @@ function extractCategoryFromText(text: string) {
   if (/(writer|writing|content|copywriter|blog|article|translator|translation|editor)/i.test(lower)) return "writing";
   if (/(marketing|seo|ads|social media|campaign)/i.test(lower)) return "marketing";
   if (/(video|photo|photographer|videographer|animation|editor)/i.test(lower)) return "video";
-  if (/(plumber|electrician|carpenter|painter|mechanic|cleaner|handyman|repair|fix|installation|maintenance|hvac|roofer)/i.test(lower)) return "trades";
+  if (/(plumber|electrician|carpenter|painter|mechanic|cleaner|handyman|repair|fix|installation|maintenance|hvac|roofer|leak|clogged|broken|wiring|outlet|circuit|breaker|fuse|pipe|toilet|sink|faucet|drain|shower|bathtub|drywall|tile|flooring|roof|gutter|fence|deck|patio|driveway|appliance|washer|dryer|dishwasher|refrigerator|oven|stove|garage door|window|door|lock|key|chimney|pool|sprinkler|concrete|masonry|brick|garden|landscape|mow|lawn|pest|termite|pest control|water heater|boiler|furnace|ac unit|air conditioning|heating|cooling|duct|vent|insulation|siding|paint|wallpaper|ceiling|basement|attic|foundation|trim|crown molding|cabinet|countertop|backsplash)/i.test(lower)) return "trades";
   if (/(accountant|bookkeeper|assistant|consultant|business|admin|data entry|research)/i.test(lower)) return "business";
   if (/(lawyer|legal|attorney|contract|paralegal)/i.test(lower)) return "legal";
 
@@ -313,7 +313,10 @@ function buildFallbackReply(currentJobData: Record<string, unknown>, message: st
 
 function normalizeJobData(jobData: Record<string, unknown> = {}, userMessage = "") {
   const description = typeof jobData.description === "string" ? rewriteDescription(jobData.description, typeof jobData.requirements === "string" ? jobData.requirements : "") : "";
-  const category = typeof jobData.category === "string" ? normalizeCategory(jobData.category) : "";
+  let category = typeof jobData.category === "string" ? normalizeCategory(jobData.category) : "";
+  if (!category && userMessage) {
+    category = extractCategoryFromText(userMessage);
+  }
   const rawLocation = typeof jobData.location === "string" ? jobData.location.trim() : "";
   const budget = typeof jobData.budget === "string" ? jobData.budget.trim() : "";
   const requirements = typeof jobData.requirements === "string" ? cleanSentence(jobData.requirements) : "";
@@ -377,6 +380,7 @@ GUIDELINES:
 - Do not invent a city if the user did not provide one.
 - If the job is online and the user implies it can be done from anywhere, use "Remote".
 - For "find_workers" intent, once description, category, location, and budget are all known, automatically proceed to posting and matching. Do not ask a separate posting confirmation question.
+- CATEGORY DETECTION RULES: When the user describes home/building problems, repairs, or physical work, use "trades". Examples: plumber, electrician, carpenter, painter, mechanic, cleaner, handyman, HVAC, roofer, repair, fix, installation, maintenance, leak, clogged, broken wiring, outlet, circuit, pipe, toilet, sink, faucet, drain, shower, bathtub, drywall, tile, flooring, fence, deck, patio, appliance repair, washer, dryer, dishwasher, refrigerator, oven, garage door, window, door, lock, chimney, pool, sprinkler, concrete, masonry, brick, garden, landscape, lawn, pest control, water heater, boiler, furnace, air conditioning, heating, cooling, duct, vent, insulation, siding, paint, wallpaper, ceiling, basement, attic, foundation, trim, cabinet, countertop, backsplash, construction, home repair, home improvement. Use "engineering" only for civil, mechanical, structural, or software engineering roles.
 - For "post_job" intent, ask whether they want to post the job once all details are ready.
 - You MUST return a JSON object containing your response and the structured job data.
 
