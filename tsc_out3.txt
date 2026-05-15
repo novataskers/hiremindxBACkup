@@ -1,0 +1,1 @@
+src/app/api/community/messages/route.ts(279,11): error TS2353: Object literal may only specify known properties, and 'conversationKey' does not exist in type '{ partnerId: string; lastMessage: string; lastMessageAt: string; unreadCount: number; projectId: number | null; }'.
