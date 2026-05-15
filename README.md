@@ -48,6 +48,53 @@ An intelligent job search platform that automates your job applications using AI
 - Profile management
 - Notification preferences
 - AI automation settings
+
+## 🛠️ Setup & Installation
+
+### Prerequisites
+- Node.js 18+ 
+- npm or yarn
+- PostgreSQL database
+- API keys for: OpenAI, Stripe, Google OAuth, Vercel
+
+### Environment Variables
+Create `.env.local` file with the following variables:
+```
+NEXT_PUBLIC_API_URL=your_api_url
+DATABASE_URL=your_database_url
+OPENAI_API_KEY=your_openai_key
+STRIPE_SECRET_KEY=your_stripe_key
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+```
+
+### Installation
+```bash
+# Install dependencies
+npm install
+
+# Run database migrations
+npm run migrate
+
+# Start development server
+npm run dev
+```
+
+The application will be available at `http://localhost:3000`
+
+## 📦 Tech Stack
+
+- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
+- **Backend**: Node.js with Next.js API Routes
+- **Database**: PostgreSQL with Drizzle ORM
+- **Authentication**: NextAuth.js with Google OAuth
+- **Payments**: Stripe
+- **AI Models**: OpenAI GPT-4, Perplexity, Google Gemini, DeepSeek
+- **Deployment**: Vercel, Netlify
+
+## 📝 License
+
+This project is proprietary and confidential.
 - Subscription management
 - Auto-apply configuration
 
